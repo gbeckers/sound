@@ -1,0 +1,6 @@
+- do not subclass BaseDataDir, instead use 'datadir' property
+- append methods
+- tests
+- establish suitable chunk lengths
+- wraptimesparammethod should include chunklen
+- standard param order
