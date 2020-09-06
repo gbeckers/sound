@@ -16,10 +16,10 @@ these files have bugs that potentially change the data.
 The WAV format is normally limited to file sizes less than 4 Gb. Recording
 equipment will often generate multiple files when the 4 Gb limit is crossed.
 In the Sound library, such files of consecutive audio chunks can easily be
-accessed as one sound with the ChunkedDiskAudioSnd object.
+accessed as one sound with the ChunkedSnd object.
 
 If you change the data with some transformation it is recommended to
-store the results in a 64-bit float format, disk space is not a major
+store the results in a 64-bit float format, if disk space is not a major
 concern. If you do not need an audio file then a float64 `Darr
 <https://github.com/gbeckers/Darr>`__ array is a good option
 because this maximizes accessibility of your data by other scientific computing

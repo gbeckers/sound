@@ -27,15 +27,6 @@ of, and is complemented, by the *SoundLab* library for sound analysis and
 visualization, and *SoundStimBuilder* library for those who construct auditory
 stimuli, e.g. for scientific experiments.
 
-Installation
-------------
-It is best to install in a separate conda environment:
-
-To install the latest development version, use pip with the latest GitHub
-master: ::
-
-    $ pip install git+https://github.com/gbeckers/sound@master
-
 Status
 ------
 Sound is relatively new, and therefore in its alpha stage.
@@ -45,6 +36,8 @@ Sound is relatively new, and therefore in its alpha stage.
    :maxdepth: 2
    :caption: Contents:
 
+   install
+   recommended
    api
 
 Indices and tables
