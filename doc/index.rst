@@ -54,4 +54,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-Sound is GPL-3 licensed. (c) 2020, Gabriël Beckers
+Sound is BSD licensed (BSD 3-Clause License). (c) 2020, Gabriël Beckers

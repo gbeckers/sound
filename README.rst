@@ -27,5 +27,6 @@ of, and is complemented, by the *SoundLab* library for sound analysis and
 visualization, and *SoundStimBuilder* library for those who construct auditory
 stimuli, e.g. for scientific experiments.
 
+Sound is BSD licensed (BSD 3-Clause License). (c) 2020, Gabriël Beckers
 
 
