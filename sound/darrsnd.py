@@ -47,6 +47,11 @@ class DarrSnd(BaseSnd):
 
         self.open = self._frames.open
 
+    @property
+    def datadir(self):
+        """Datadir object with useful properties and methods for file/data IO"""
+        return self._datadir
+
     def __str__(self):
         return f'{super().__str__()[:-1]}, {self.dtype}>'
 

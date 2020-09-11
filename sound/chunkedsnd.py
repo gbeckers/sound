@@ -4,14 +4,15 @@ from darr.basedatadir import BaseDataDir
 from darr.metadata import MetaData
 from .snd import BaseSnd
 from .audiofile import AudioFile, encodingtodtype
-from .darrsnd import DarrSnd
+from .darrsnd import DarrSnd, DataDir
 from .utils import wraptimeparamsmethod
 from .audioimport import list_audiofiles
 from ._version import get_versions
 
 __all__ = ['ChunkedSnd', 'audiodir_to_chunkedsnd']
 
-class ChunkedSnd(BaseSnd, BaseDataDir):
+
+class ChunkedSnd(BaseSnd):
     _classid = 'ChunkedSnd'
     _classdescr = 'represents a continuous sound stored in separate files'
     _version = get_versions()['version']
@@ -19,24 +20,26 @@ class ChunkedSnd(BaseSnd, BaseDataDir):
     _chunkinfopath = 'chunkinfo.json'
     _metadatapath = 'metadata.json'
 
-    def __init__(self, path, dtype=None):
-        BaseDataDir.__init__(self, path=path)
+    def __init__(self, path, dtype=None, accessmode='r'):
+        self._datadir = dd = DataDir(path=path, accessmode=accessmode)
         self._snds = []
         chunknframes = [0]
-        ci = self._read_jsondict(self._chunkinfopath)
+        ci = dd._read_jsondict(self._chunkinfopath)
         if ci['filetype'] == 'AudioFile':
             SndClass = AudioFile
         elif ci['filetype'] == 'DarrSnd':
             SndClass = DarrSnd
+        else:
+            raise TypeError(f"file type '{ci['filetype']}' not understood")
         for pn in ci['chunkpaths']:
-            snd = SndClass(self.path / pn, dtype=dtype)
+            snd = SndClass(dd.path / pn, dtype=dtype)
             self._snds.append(snd)
             chunknframes.append(snd.nframes)
         self._chunknframes = np.array(chunknframes, dtype='int64')
         self._endindices = np.cumsum(self._chunknframes)
         nframes = self._chunknframes.sum()
         nchannels = ci['nchannels']
-        metadata = MetaData(self.path / self._metadatapath)
+        metadata = MetaData(dd.path / self._metadatapath)
         if dtype is None:
             dtype = ci['dtype']
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=ci['fs'],
@@ -44,6 +47,11 @@ class ChunkedSnd(BaseSnd, BaseDataDir):
                          startdatetime=ci['startdatetime'],
                          origintime=ci['origintime'], metadata=metadata,
                          encoding=ci['fileformatsubtype'])
+
+    @property
+    def datadir(self):
+        """Datadir object with useful properties and methods for file/data IO"""
+        return self._datadir
 
     @contextmanager
     def open(self):

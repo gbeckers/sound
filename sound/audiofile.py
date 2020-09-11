@@ -266,6 +266,7 @@ class AudioSnd(AudioFile):
 
     @property
     def datadir(self):
+        """Datadir object with useful properties and methods for file/data IO"""
         return self._datadir
 
 
