@@ -9,6 +9,7 @@ from .utils import wraptimeparamsmethod
 from .audioimport import list_audiofiles
 from ._version import get_versions
 
+
 __all__ = ['ChunkedSnd', 'audiodir_to_chunkedsnd']
 
 

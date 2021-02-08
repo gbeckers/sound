@@ -2,10 +2,6 @@ import unittest
 import numpy as np
 from sound import Snd
 
-# frames, fs, startdatetime='NaT',
-#                  origintime=0.0, metadata=None, dtype=None,
-#                  scalingfactor=None, encoding=None, unit=None):
-
 
 class TestSnd(unittest.TestCase):
 
