@@ -1,10 +1,10 @@
-import types
 import numpy as np
 from contextlib import contextmanager
+from pathlib import Path
 from darr import asarray
 
 
-from .disksnd import DataDir, create_datadir
+from .sndinfo import SndInfo, _create_sndinfo
 
 from .utils import duration_string, check_episode, iter_timewindowindices, \
     wraptimeparamsmethod, calcsecstonexthour, peek_iterable
@@ -64,6 +64,8 @@ class BaseSnd:
         self._startdatetime = np.datetime64(startdatetime)
         self._origintime = float(origintime)
         self._unit = unit
+        if metadata is None:
+            metadata = {}
         self._metadata = metadata
 
     @property
@@ -213,13 +215,14 @@ class BaseSnd:
                 'duration': duration_string(self.duration),
                 'encoding': self.encoding,
                 'fs': self.fs,
+                'metadata': dict(self.metadata),
                 'nchannels': self.nchannels,
                 'nframes': self.nframes,
                 'origintime': self.origintime,
                 'scalingfactor': self.scalingfactor,
                 'startdatetime': str(self.startdatetime),
                 'unit': self._unit,
-                'soundversion': get_versions()['version']}
+                }
 
     def samplingtimes(self):
         """
@@ -501,8 +504,8 @@ class BaseSnd:
                             endtime=endtime, startdatetime=startdatetime,
                             enddatetime=enddatetime, channelindex=channelindex,
                             overwrite=overwrite)
-
-    @wraptimeparamsmethod
+    #FIXME wrap
+    #@wraptimeparamsmethod
     def to_darrsnd(self, path=None, dtype=None, metadata=None, mode='r',
                    startframe=None, endframe=None, starttime=None, endtime=None,
                    startdatetime=None, enddatetime=None, blocklen=44100,
@@ -510,37 +513,24 @@ class BaseSnd:
 
         from .darrsnd import DarrSnd
 
-        dd = create_datadir(path, overwrite=overwrite)
-        framespath = dd.path / DarrSnd._framespath
         snds = self.iterread(startframe=startframe, endframe=endframe,
                                channelindex=channelindex,
                                blocklen=blocklen)
         snd1, snds = peek_iterable(snds)
-        startdatetime = str(snd1.startdatetime)
-        origintime = float(snd1.origintime)
+        sndpath = Path(path)
+        if sndpath.suffix not in (SndInfo._suffix, SndInfo._suffix.upper()):
+            sndpath = path.with_suffix(SndInfo._suffix)
+        darrpath = sndpath.with_suffix('.darr')
         frames = (snd.read_frames() for snd in snds)
-        da = asarray(path=framespath, array=frames, dtype=dtype,
-                     accessmode=accessmode, overwrite=overwrite)
-        duration = da.shape[0] / self.fs
-        sndinfo = {'dtype': da.dtype.name,
-                   'fs': self.fs,
-                   'duration': duration,
-                   'startdatetime': startdatetime,
-                   'origintime': origintime,
-                   'nchannels': da.shape[1],
-                   'nframes': da.shape[0],
-                   'soundversion': get_versions()['version'],
-                   'unit': self.unit,
-                   }
-        dd.write_sndinfo(sndinfo, overwrite=overwrite)
-        if (metadata is not None) and (not overwrite):
-            dd.update(metadata)
-        da.accessmode = accessmode
-        return DarrSnd(path=path, accessmode=accessmode)
+        asarray(path=darrpath, array=frames, dtype=dtype,
+                accessmode=accessmode, overwrite=overwrite)
+        d = self._saveparams  # standard params that need saving
+        _create_sndinfo(sndpath, object=DarrSnd, d=d, overwrite=overwrite)
+        return DarrSnd(sndpath, accessmode=accessmode)
 
 
 
-    def to_audiofilesnd(self, path, format=None, subtype=None, endian=None,
+    def to_audiosnd(self, path, format=None, subtype=None, endian=None,
                         startframe=None, endframe=None, starttime=None,
                         endtime=None, startdatetime=None, enddatetime=None,
                         channelindex=None, overwrite=False):
@@ -585,7 +575,7 @@ class BaseSnd:
             af = s.to_audiofile(dd.path/fname, format=format,
                                 subtype=subtype, endian=endian,
                                 overwrite=overwrite)
-            fnames.append(af.audiofilepath.name)
+            fnames.append(af.path.name)
             if i == 0:
                 s0 = s
             nframes += s.nframes
@@ -631,7 +621,7 @@ class BaseSnd:
             af = s.to_darrsnd(dd.path/fname, dtype=dtype,
                               metadata=None,
                               overwrite=overwrite)
-            fnames.append(af.audiofilepath.name)
+            fnames.append(af.path.name)
             if i == 0:
                 s0 = s
             nframes += s.nframes
@@ -660,6 +650,19 @@ def dtypetoencoding(dtype):
         raise TypeError(f"dtype '{dtype.name}' is not supported")
     return mapping[dtype.name]
 
+
+class DiskSnd:
+
+    _classid = 'DiskSnd'
+    _classdescr = 'sound stored on disk, parent for most other classes'
+    _version = get_versions()['version']
+
+    _sndinfopath = 'sndinfo.json'
+    _metadatapath = 'metadata.json'
+
+
+
+# FIXME rename this to RAMSnd?
 class Snd(BaseSnd):
 
     _classid = 'Snd'

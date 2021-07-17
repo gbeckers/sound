@@ -5,7 +5,7 @@ from darr import asarray, create_array, Array, \
 from darr.numtype import numtypesdescr
 
 from .snd import BaseSnd
-from .disksnd import DataDir, create_datadir
+from .sndinfo import SndInfo, _create_sndinfo
 from .utils import wraptimeparamsmethod
 from ._version import get_versions
 
@@ -14,8 +14,8 @@ __all__ = ['available_darrsndformats', 'create_darrsnd', 'DarrSnd']
 available_darrsndformats = dict(numtypesdescr)
 
 
-# append?
-class DarrSnd(BaseSnd):
+# FIXME should this have a subformattype attribute?
+class DarrSnd(BaseSnd, SndInfo):
 
     """
 
@@ -29,28 +29,36 @@ class DarrSnd(BaseSnd):
 
     _framespath = 'frames'
     _classid = "DarrSnd"
-    _version = get_versions()['version']
+    _suffix = '.darrsnd'
+    _fileformat = 'darrsnd'
 
     def __init__(self, path, accessmode='r'):
-        self._datadir = dd = DataDir(path=path, accessmode=accessmode)
+        SndInfo.__init__(self, path=path, accessmode=accessmode)
         path = Path(path)
         self._frames = frames = Array(path=path / self._framespath, accessmode=accessmode)
         if frames.ndim != 2:
             raise ValueError(f"`Darr Array` has to have 2 dimensions (now: {frames.ndim})")
         nframes, nchannels = frames.shape
-        sndinfo = dd.read_sndinfo()
+        sndinfo = self.read_sndinfo()
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels,
                          fs=sndinfo['fs'], dtype=frames.dtype,
                          startdatetime=sndinfo['startdatetime'],
-                         origintime=sndinfo['origintime'], metadata=dd.metadata,
+                         origintime=sndinfo['origintime'], metadata=self.metadata,
                          scalingfactor=None, unit=sndinfo['unit'])
 
         self.open = self._frames.open
 
     @property
-    def datadir(self):
-        """Datadir object with useful properties and methods for file/data IO"""
-        return self._datadir
+    def fileformat(self):
+        return self._fileformat
+
+    @property
+    def fileformatsubtype(self):
+        return self._frames._arrayinfo['numtype']
+
+    @property
+    def endianness(self):
+        return self._frames._arrayinfo['byteorder']
 
     def __str__(self):
         return f'{super().__str__()[:-1]}, {self.dtype}>'
@@ -83,23 +91,20 @@ def create_darrsnd(path, nframes, nchannels, fs, startdatetime='NaT',
                    origintime=0.0, dtype='float32', fill=None, fillfunc=None,
                    accessmode='r+', chunksize=1024 * 1024, metadata=None,
                    unit=None, overwrite=False):
-    path = Path(path)
-    if path.suffix != 'darrsnd':
-        path = path.with_suffix('.darrsnd')
-    dd = create_datadir(path=path, overwrite=overwrite)
+    sndpath = Path(path)
+    if sndpath.suffix not in (SndInfo._suffix, SndInfo._suffix.upper()):
+        sndpath = path.with_suffix(SndInfo._suffix)
+    darrpath = sndpath.with_suffix('.darr')
+
     shape = (nframes, nchannels)
-    framespath = path / DarrSnd._framespath
-    da = create_array(path=framespath, shape=shape,
-                   dtype=dtype, fill=fill, fillfunc=fillfunc,
-                   accessmode=accessmode,
-                   chunklen=chunksize, metadata=None, overwrite=overwrite)
+    create_array(path=darrpath, shape=shape,
+                 dtype=dtype, fill=fill, fillfunc=fillfunc,
+                 accessmode=accessmode,
+                 chunklen=chunksize, metadata=None, overwrite=overwrite)
     bsnd = BaseSnd(nframes=nframes, nchannels=nchannels, fs=fs, dtype=dtype,
                    startdatetime=startdatetime, origintime=origintime,
                    unit=unit, metadata=metadata)
-
-    sndinfo = bsnd._saveparams()
-    dd.write_sndinfo(sndinfo, overwrite=overwrite)
-    if (metadata is not None) and (not overwrite):
-        dd.metadata.update(bsnd.metadata)
-    return DarrSnd(path=path, accessmode=accessmode)
+    d = bsnd._saveparams()
+    _create_sndinfo(sndpath, object=DarrSnd, d=d, overwrite=overwrite)
+    return DarrSnd(sndpath, accessmode=accessmode)
 

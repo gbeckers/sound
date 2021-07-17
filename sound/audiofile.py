@@ -3,9 +3,9 @@ import numpy as np
 import soundfile as sf
 from contextlib import contextmanager
 from pathlib import Path
-from .disksnd import create_datadir
+from .sndinfo import _create_sndinfo
 from .snd import BaseSnd
-from .disksnd import DataDir
+from .sndinfo import DiskSnd, SndInfo
 from .utils import wraptimeparamsmethod
 from ._version import get_versions
 
@@ -62,13 +62,13 @@ class AudioFile(BaseSnd):
     `startdatetime` and `metadata, or override the sampling rate, this info is
     not persistent (i.e. it is not saved on disk). If you want persistency
     then convert the AudioFile to an AudioFileSnd by using the
-    `as_audiofilesnd` method. An AudioFileSnd is based on the same audiofile,
+    `as_audiosnd` method. An AudioFileSnd is based on the same audiofile,
     but in addition saves metadata and other information in separate
     text-based files.
 
     Parameters
     ----------
-    filepath: str or pathlib.Path
+    path: str or pathlib.Path
     dtype: numpy dtype, {'float32' | 'float64' | 'int16' | 'int32'| None}
     fs
     startdatetime
@@ -85,14 +85,12 @@ class AudioFile(BaseSnd):
     _version = get_versions()['version']
 
 
-    def __init__(self, filepath, startdatetime='NaT', origintime=0.0,
-                 metadata=None, mode='r', fs=None,
+    def __init__(self, path, startdatetime='NaT', origintime=0.0,
+                 mode='r', fs=None, metadata=None,
                  scalingfactor=None, unit=None, dtype=None):
-
-
-        self.audiofilepath = Path(filepath)
+        self._path = Path(path)
         self._mode = mode
-        with sf.SoundFile(str(filepath)) as f:
+        with sf.SoundFile(str(path)) as f:
             nframes = len(f)
             nchannels = f.channels
             if fs is None: # possibility to override, e.g. floating point
@@ -113,6 +111,10 @@ class AudioFile(BaseSnd):
                f'{self.fileformatsubtype}>'
 
     __repr__ = __str__
+
+    @property
+    def path(self):
+        return self._path
 
     @property
     def mode(self):
@@ -142,7 +144,7 @@ class AudioFile(BaseSnd):
             yield self._fileobj
         else:
             try:
-                with sf.SoundFile(str(self.audiofilepath), mode=mode) as fileobj:
+                with sf.SoundFile(str(self.path), mode=mode) as fileobj:
                     self._fileobj = fileobj
                     yield fileobj
             except:
@@ -178,7 +180,7 @@ class AudioFile(BaseSnd):
                     af.seek(startframe)
                 except:
                     #TODO make a proper error
-                    print(f'Unexpected error when seeking frame {startframe} in {self.audiofilepath} '
+                    print(f'Unexpected error when seeking frame {startframe} in {self.path} '
                           f'which should have {self.nframes} frames.')
                     raise
             try:
@@ -187,7 +189,7 @@ class AudioFile(BaseSnd):
             except:
                 # TODO make a proper error
                 print(f'Unexpected error when reading {endframe-startframe} frames, '
-                      f'starting from frame {startframe} in {self.audiofilepath}, which should '
+                      f'starting from frame {startframe} in {self.path}, which should '
                       f'have {self.nframes} frames.')
                 raise
 
@@ -208,66 +210,50 @@ class AudioFile(BaseSnd):
             return frames
 
     def info(self, verbose=False):
-        return sf.info(str(self.audiofilepath), verbose=verbose)
+        return sf.info(str(self.path), verbose=verbose)
 
-    # FIXME something like this also in Snd
-    def as_audiosnd(self, outputpath=None, move=False,
-                    overwrite=False):
-        """Convert an AudioFile to a DiskAudioSnd
+    def as_audiosnd(self, overwrite=False):
+        """Convert an AudioFile to an AudioSnd
 
-        Frama data will be based on the same underlying audiofile, either by
-        copying the audio file (default) or moving it. The advantage of a
-        DiskAudioSnd over an AudioFile is a.o. the ability to use metadata that
+        Frama data will be based on the same underlying audiofile,
+        but additional info will be saved separately. The advantage of a
+        AudioSnd over an AudioFile is a.o. the ability to use metadata that
         is stored in a separate json text file and the ability to use
         non-integer sampling rates, a scaling factor, an non-default dtype,
         etc, in a persistent way.
 
         """
-        audiofilepath = self.audiofilepath
-        if outputpath is None:
-            outputpath = audiofilepath.with_suffix(DataDir._suffix)
-        if outputpath == audiofilepath:
-            raise IOError(f"audiofile ({audiofilepath}) already has "
-                          f"'.das' extension. Will not overwrite. Please "
-                          f"specify an alternative outputpath")
-        dd = create_datadir(outputpath, overwrite=overwrite)
-        d = self._saveparams() # standard params that need saving
+        if self.metadata is None:
+            metadata = {}
+        audiofilepath = self.path
+        sndpath = audiofilepath.with_suffix(SndInfo._suffix)
+        d = self._saveparams  # standard params that need saving
         d.update({'audiofilename': audiofilepath.name, # extra ones
                   'endiannes': self.endianness,
                   'fileformat': self.fileformat,
-                  'objecttype': 'AudioSnd'})
-        dd.write_sndinfo(d=d, overwrite=overwrite)
-        if self.metadata is not None:
-            dd.metadata.update(self.metadata)
-        if move:
-            shutil.move(audiofilepath, dd.path / audiofilepath.name)
-        else:
-            shutil.copy(audiofilepath, dd.path / audiofilepath.name)
-        return AudioSnd(outputpath)
+                  })
+        sndinfo = _create_sndinfo(sndpath, object=AudioSnd, d=d, overwrite=overwrite)
+        return AudioSnd(sndpath)
 
 
-class AudioSnd(AudioFile):
+# Do we really need separate dir?
+class AudioSnd(AudioFile, DiskSnd):
 
     _classid = 'AudioSnd'
     _classdescr = 'disk-persistent sound in an audio file plus metadata'
-    _version = get_versions()['version']
+    _suffix = '.snd'
 
     def __init__(self, path, dtype=None, accessmode='r'):
-        self._datadir = dd = DataDir(path=path, accessmode=accessmode)
-        ci = dd.read_sndinfo()
+        DiskSnd.__init__(self, path=path, accessmode=accessmode)
+        ci = self._sndinfo._read()
         audiofilename = ci['audiofilename']
         if dtype is None:
             dtype = ci['dtype']
-        AudioFile.__init__(self, filepath=dd.path / audiofilename,
+        AudioFile.__init__(self, path=self.path.parent / audiofilename,
                            fs=ci['fs'], scalingfactor=ci['scalingfactor'],
                            startdatetime=ci['startdatetime'],
                            origintime=ci['origintime'],
-                           metadata=dd.metadata, mode='r', dtype=dtype)
-
-    @property
-    def datadir(self):
-        """Datadir object with useful properties and methods for file/data IO"""
-        return self._datadir
+                           metadata=self.metadata, mode='r', dtype=dtype)
 
 
 # FIXME get rid of this here, should move to BaseSnd
@@ -318,7 +304,7 @@ def to_audiofile(s, path=None, format=None, subtype=None,
             subtype = defaultaudiosubtype[format]
     if path is None:
         if hasattr(s, 'path'):
-            path = Path(s.audiofilepath)
+            path = Path(s.path)
         else:
             raise ValueError(f'`path` parameter must be specified for object of '
                              f'type {type(s)}')

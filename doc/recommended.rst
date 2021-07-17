@@ -5,7 +5,7 @@ original. I.e. do not delete it after you converted it into something else,
 even if that conversion is said to be 'lossless' or if you are saving in a
 higher resolution format. Some conversions are theoretically lossless, but
 even renowned audio libraries and programs have bugs, so any conversion may
-lead to unintended changes. Yes, this really happens in practice.
+lead to unintended changes. Yes, I have seen this really happens in practice.
 
 Further, if you record audio files it is best to use a widely supported
 format with sufficient resolution. I recommend 'WAV' and integer 24-bit or
@@ -16,7 +16,7 @@ these files have bugs that potentially change the data.
 The WAV format is normally limited to file sizes less than 4 Gb. Recording
 equipment will often generate multiple files when the 4 Gb limit is crossed.
 In the Sound library, such files of consecutive audio chunks can easily be
-accessed as one sound with the ChunkedSnd object.
+used as one sound with the ChunkedSnd object.
 
 If you change the data with some transformation it is recommended to
 store the results in a 64-bit float format, if disk space is not a major
