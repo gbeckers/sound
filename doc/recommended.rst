@@ -5,13 +5,16 @@ original. I.e. do not delete it after you converted it into something else,
 even if that conversion is said to be 'lossless' or if you are saving in a
 higher resolution format. Some conversions are theoretically lossless, but
 even renowned audio libraries and programs have bugs, so any conversion may
-lead to unintended changes. Yes, I have seen this really happens in practice.
+lead to unintended changes. I have seen this really happens in practice.
 
 Further, if you record audio files it is best to use a widely supported
 format with sufficient resolution. I recommend 'WAV' and integer 24-bit or
 even better 32-bit float LPCM encoding without compression. These are lossless
 and widely used formats, reducing the chances that software reading or writing
-these files have bugs that potentially change the data.
+these files have bugs that potentially change the data. The latter format has
+the advantage that data can be read very fast because your computer can
+directly work with 32-bit float numbers and not with 24-bit numbers, which
+will need more processing.
 
 The WAV format is normally limited to file sizes less than 4 Gb. Recording
 equipment will often generate multiple files when the 4 Gb limit is crossed.

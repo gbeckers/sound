@@ -2,7 +2,7 @@ import numpy as np
 from contextlib import contextmanager
 from darr.basedatadir import BaseDataDir
 from darr.metadata import MetaData
-from .snd import BaseSnd, DiskSnd
+from .snd import BaseSnd
 from .audiofile import AudioFile, encodingtodtype
 from .darrsnd import DarrSnd, SndInfo
 from .utils import wraptimeparamsmethod

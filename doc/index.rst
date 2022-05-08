@@ -16,7 +16,8 @@ various types of metadata. These things do not matter when working with your
 average music song, but they do matter in science and other applications.
 *Sound* is intended to solve this problem.
 
-In its simplest form, *Sound* work with (collections of) normal audio files.
+In its simplest use case, *Sound* works with (collections of) normal audio
+files.
 However it improves their usefulness by organizing important metadata in
 separate text-based files. For more heavy-duty work, *Sound* works with
 `Darr <https://darr.readthedocs.io/en/latest>`__-based data, which is a format

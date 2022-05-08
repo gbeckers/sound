@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from pathlib import Path
-from .audiofile import AudioFile, AudioSnd, defaultaudiosubtype
+from .audiofile import AudioFile, AudioSnd, defaultaudioencoding
 from .darrsnd import DarrSnd
 
 import fnmatch
@@ -18,7 +18,7 @@ def findfiles(which, where='.'):
     return [name for name in os.listdir(where) if rule.match(name)]
 
 
-validextensions = {f'.{k}' for k in defaultaudiosubtype.keys()} # audio file extensions
+validextensions = {f'.{k}' for k in defaultaudioencoding.keys()} # audio file extensions
 validextensions |= {ve.lower() for ve in validextensions} # lowercase
 validextensions |= ({'.darrsnd', '.DARRSND'})
 validextensions |= ({'.audiosnd', '.AUDIOSND'})

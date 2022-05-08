@@ -1,43 +1,40 @@
-import shutil
 import numpy as np
 import soundfile as sf
 from contextlib import contextmanager
 from pathlib import Path
-from .sndinfo import _create_sndinfo
+from .sndinfo import SndInfo, _create_sndinfo
 from .snd import BaseSnd
-from .sndinfo import DiskSnd, SndInfo
 from .utils import wraptimeparamsmethod
-from ._version import get_versions
 
 __all__ = ["AudioFile", "AudioSnd", "available_audioformats",
            "available_audioencodings"]
 
 defaultaudioformat = 'WAV'
-defaultaudiosubtype = {'AIFF': 'FLOAT',
-                       'AU': 'FLOAT',
-                       'AVR': 'PCM_16',
-                       'CAF': 'FLOAT',
-                       'FLAC': 'PCM_24',
-                       'HTK': 'PCM_16',
-                       'IRCAM': 'FLOAT',
-                       'MAT4': 'FLOAT',
-                       'MAT5': 'FLOAT',
-                       'MPC2K': 'PCM_16',
-                       'NIST': 'PCM_32',
-                       'OGG': 'VORBIS',
-                       'PAF': 'PCM_24',
-                       'PVF': 'PCM_32',
-                       'RAW': 'FLOAT',
-                       'RF64': 'FLOAT',
-                       'SD2': 'PCM_24',
-                       'SDS': 'PCM_24',
-                       'SVX': 'PCM_16',
-                       'VOC': 'PCM_16',
-                       'W64': 'FLOAT',
-                       'WAV': 'PCM_24',
-                       'WAVEX': 'FLOAT',
-                       'WVE': 'ALAW',
-                       'XI': 'DPCM_16'}
+defaultaudioencoding = {'AIFF': 'FLOAT',
+                        'AU': 'FLOAT',
+                        'AVR': 'PCM_16',
+                        'CAF': 'FLOAT',
+                        'FLAC': 'PCM_24',
+                        'HTK': 'PCM_16',
+                        'IRCAM': 'FLOAT',
+                        'MAT4': 'FLOAT',
+                        'MAT5': 'FLOAT',
+                        'MPC2K': 'PCM_16',
+                        'NIST': 'PCM_32',
+                        'OGG': 'VORBIS',
+                        'PAF': 'PCM_24',
+                        'PVF': 'PCM_32',
+                        'RAW': 'FLOAT',
+                        'RF64': 'FLOAT',
+                        'SD2': 'PCM_24',
+                        'SDS': 'PCM_24',
+                        'SVX': 'PCM_16',
+                        'VOC': 'PCM_16',
+                        'W64': 'FLOAT',
+                        'WAV': 'PCM_24',
+                        'WAVEX': 'FLOAT',
+                        'WVE': 'ALAW',
+                        'XI': 'DPCM_16'}
 
 available_audioformats = sf.available_formats()
 available_audioencodings = sf.available_subtypes()
@@ -62,7 +59,7 @@ class AudioFile(BaseSnd):
     `startdatetime` and `metadata, or override the sampling rate, this info is
     not persistent (i.e. it is not saved on disk). If you want persistency
     then convert the AudioFile to an AudioFileSnd by using the
-    `as_audiosnd` method. An AudioFileSnd is based on the same audiofile,
+    `as_audiosnd` method. An AudioSnd is based on the same audiofile,
     but in addition saves metadata and other information in separate
     text-based files.
 
@@ -80,14 +77,13 @@ class AudioFile(BaseSnd):
 
 
     """
+
     _classid = 'AudioFile'
     _classdescr = 'Sound in audio file'
-    _version = get_versions()['version']
-
 
     def __init__(self, path, startdatetime='NaT', origintime=0.0,
-                 mode='r', fs=None, metadata=None,
-                 scalingfactor=None, unit=None, dtype=None):
+                 mode='r', fs=None, metadata=None, scalingfactor=None,
+                 unit=None, dtype=None, **kwargs):
         self._path = Path(path)
         self._mode = mode
         with sf.SoundFile(str(path)) as f:
@@ -100,10 +96,11 @@ class AudioFile(BaseSnd):
             self._endianness = f.endian
             if dtype is None:
                 dtype = encodingtodtype.get(self._fileformatsubtype, 'float64')
-        BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs, dtype=dtype,
-                         startdatetime=startdatetime, origintime=origintime, metadata=metadata,
+        BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
+                         dtype=dtype, startdatetime=startdatetime,
+                         origintime=origintime, metadata=metadata,
                          encoding=f.subtype, scalingfactor=scalingfactor,
-                         unit=unit)
+                         unit=unit, **kwargs)
         self._fileobj = None
 
     def __str__(self):
@@ -210,9 +207,12 @@ class AudioFile(BaseSnd):
             return frames
 
     def info(self, verbose=False):
-        return sf.info(str(self.path), verbose=verbose)
+        d = super().info()
+        d['fileformat'] = self.fileformat
+        d['audiofilepath'] = str(self.path)
+        return {k: d[k] for k in sorted(d.keys())}
 
-    def as_audiosnd(self, overwrite=False):
+    def as_audiosnd(self, accessmode='r', overwrite=False):
         """Convert an AudioFile to an AudioSnd
 
         Frama data will be based on the same underlying audiofile,
@@ -225,116 +225,45 @@ class AudioFile(BaseSnd):
         """
         if self.metadata is None:
             metadata = {}
+        else:
+            metadata = self.metadata
         audiofilepath = self.path
-        sndpath = audiofilepath.with_suffix(SndInfo._suffix)
+        sndinfopath = audiofilepath.with_suffix(SndInfo._suffix)
         d = self._saveparams  # standard params that need saving
         d.update({'audiofilename': audiofilepath.name, # extra ones
                   'endiannes': self.endianness,
                   'fileformat': self.fileformat,
+                  'metadata': metadata,
+                  'sndtype': AudioSnd._classid,
                   })
-        sndinfo = _create_sndinfo(sndpath, object=AudioSnd, d=d, overwrite=overwrite)
-        return AudioSnd(sndpath)
+        _create_sndinfo(sndinfopath, d=d, overwrite=overwrite)
+        return AudioSnd(sndinfopath, accessmode=accessmode)
 
 
-# Do we really need separate dir?
-class AudioSnd(AudioFile, DiskSnd):
+class AudioSnd(AudioFile, SndInfo):
 
     _classid = 'AudioSnd'
-    _classdescr = 'disk-persistent sound in an audio file plus metadata'
-    _suffix = '.snd'
+    _classdescr = 'Sound in audio file plus additional data in json file'
+    _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
+                      'startdatetime', 'unit')
 
     def __init__(self, path, dtype=None, accessmode='r'):
-        DiskSnd.__init__(self, path=path, accessmode=accessmode)
-        ci = self._sndinfo._read()
-        audiofilename = ci['audiofilename']
-        if dtype is None:
-            dtype = ci['dtype']
-        AudioFile.__init__(self, path=self.path.parent / audiofilename,
-                           fs=ci['fs'], scalingfactor=ci['scalingfactor'],
-                           startdatetime=ci['startdatetime'],
-                           origintime=ci['origintime'],
-                           metadata=self.metadata, mode='r', dtype=dtype)
-
-
-# FIXME get rid of this here, should move to BaseSnd
-def to_audiofile(s, path=None, format=None, subtype=None,
-                 endian=None,
-                 startframe=None, endframe=None,
-                 starttime=None, endtime=None,
-                 startdatetime=None, enddatetime=None,
-                 overwrite=False, channelindex=None):
-    """
-    Save sound object to an audio file.
-
-    Parameters
-    ----------
-    s: Snd, DiskSnd, or AudioFile
-    path
-    format
-    subtype
-    endian
-    startframe: {int, None}
-        The index of the frame at which the exported sound should start.
-        Defaults to None, which means the start of the sound (index 0).
-    endframe: {int, None}
-        The index of the frame at which the exported sound should start.
-        Defaults to None, which means the start of the sound (index 0).
-    starttime
-    endtime
-    startdatetime
-    enddatetime
-    overwrite
-    channelindex
-
-    Returns
-    -------
-    AudioFile object
-
-    """
-    if format is None:
-        if isinstance(s, AudioFile):
-            format = s._fileformat
-        else:
-            format = defaultaudioformat
-    if subtype is None:
-        if isinstance(s, AudioFile):
-            if s._fileformatsubtype in sf.available_subtypes(format):
-                subtype = s._fileformatsubtype
-        else:
-            subtype = defaultaudiosubtype[format]
-    if path is None:
-        if hasattr(s, 'path'):
-            path = Path(s.path)
-        else:
-            raise ValueError(f'`path` parameter must be specified for object of '
-                             f'type {type(s)}')
-    else:
         path = Path(path)
-    if path.suffix != f'.{format.lower()}':
-        path = path.with_suffix(f'.{format.lower()}')
-    samplerate = round(s.fs)
-    path = Path(path)
-    if path.exists() and not overwrite:
-        raise IOError(
-            "File '{}' already exists; use 'overwrite'".format(path))
-    startframe, endframe = s._check_episode(startframe=startframe,
-                                            endframe=endframe,
-                                            starttime=starttime,
-                                            endtime=endtime,
-                                            startdatetime=startdatetime,
-                                            enddatetime=enddatetime)
-    if channelindex is not None:
-        nchannels = len(np.ones([1, s.nchannels])[0, channelindex])
-    else:
-        nchannels = s.nchannels
-    with sf.SoundFile(file=str(path), mode='w', samplerate=samplerate,
-                      channels=nchannels, subtype=subtype, endian=endian,
-                      format=format) as f:
-        for window in s.iterread_frames(blocklen=samplerate,
-                                        startframe=startframe,
-                                        endframe=endframe,
-                                        channelindex=channelindex):
-            f.write(window)
+        SndInfo.__init__(self, path=path, accessmode=accessmode,
+                         settableparams=self._settableparams)
+        si = self._sndinfo._read()
+        audiofilename = path.parent / si['audiofilename']
+        if dtype is None:
+            dtype = si['dtype']
+        AudioFile.__init__(self, path=audiofilename,
+                           fs=si['fs'], scalingfactor=si['scalingfactor'],
+                           startdatetime=si['startdatetime'],
+                           origintime=si['origintime'],
+                           metadata=si['metadata'], mode=accessmode,
+                           dtype=dtype, setparamcallback=self._set_parameter)
 
-    return AudioFile(path)
+    def info(self, verbose=False):
+        d = super().info()
+        d['sndinfofilepath'] = str(self._sndinfo.path)
+        return {k: d[k] for k in sorted(d.keys())}
 

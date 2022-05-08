@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from darr import asarray
 
-
 from .sndinfo import SndInfo, _create_sndinfo
 
 from .utils import duration_string, check_episode, iter_timewindowindices, \
@@ -18,6 +17,23 @@ def _check_frames(frames):
         raise TypeError(f"`frames` object does not have all of the required attributes: {requiredattrs} ")
     return frames
 
+def _check_origintime(origintime):
+    return float(origintime)
+
+def _check_startdatetime(startdatetime):
+    return np.datetime64(startdatetime)
+
+def _check_fs(fs):
+    return fs
+
+def _check_scalingfactor(scalingfactor):
+    return scalingfactor
+
+def _check_unit(unit):
+    return unit
+
+def _check_metadata(metadata):
+    return metadata
 
 class BaseSnd:
     _timeaxis = 0
@@ -38,6 +54,8 @@ class BaseSnd:
       and to implement an `open` method.
     fs: {int, float}
       Sampling rate in Hz.
+    dtype: numpy dtype
+        This is the dtype of the raw frame values when they are read internally.
     startdatetime: str
       The date and time when the sound started to occur. The most basic way to create a datetime is from strings in 
       ISO 8601 date or datetime format. The unit for internal storage is automatically selected from the form of the 
@@ -50,23 +68,23 @@ class BaseSnd:
 
     def __init__(self, nframes, nchannels, fs, dtype, scalingfactor=None,
                  encoding=None,  startdatetime='NaT', origintime=0.0, unit=None,
-                 metadata=None):
+                 metadata=None, setparamcallback=None):
 
         self._nframes = nframes
         self._nchannels = nchannels
         if not isinstance(fs, (int, float)):
             raise TypeError(f"`fs` can only be an int or float, not; {type(fs)}")
-        self._fs = fs
-        self._dt = 1. / float(fs)
+        self._fs = _check_fs(fs)
         self._dtype = dtype
-        self._scalingfactor = scalingfactor
+        self._scalingfactor = _check_scalingfactor (scalingfactor)
         self._encoding = encoding
-        self._startdatetime = np.datetime64(startdatetime)
-        self._origintime = float(origintime)
-        self._unit = unit
+        self._startdatetime = _check_startdatetime(startdatetime)
+        self._origintime = _check_origintime(origintime)
+        self._unit = _check_unit(unit)
         if metadata is None:
             metadata = {}
-        self._metadata = metadata
+        self._metadata = _check_metadata(metadata)
+        self._setparamcallback = setparamcallback  # for subclasses
 
     @property
     def nframes(self):
@@ -86,7 +104,7 @@ class BaseSnd:
     @property
     def dt(self):
         """Sampling period in seconds."""
-        return self._dt
+        return 1 / self._fs
 
     @property
     def dtype(self):
@@ -105,7 +123,7 @@ class BaseSnd:
 
     @property
     def duration(self):
-        return self._nframes * self._dt
+        return self._nframes / self._fs
 
     @property
     def startdatetime(self):
@@ -142,10 +160,48 @@ class BaseSnd:
 
     @property
     def metadata(self):
-        return self._metadata
+        """Returns *copy* of metadata dict. Use `set_metadata` method if you
+        want to change metadata."""
+        return self._metadata.copy()
+
+    def set_fs(self, fs):
+        fs = _check_fs(fs)
+        if self._setparamcallback is not None:
+            self._setparamcallback('fs', fs)
+        self._fs = fs
+
+    def set_metadata(self, metadata):
+        metadata = _check_metadata(metadata)
+        if self._setparamcallback is not None:
+            self._setparamcallback('metadata', metadata)
+        self._metadata = metadata
+
+    def set_origintime(self, origintime):
+        origintime = _check_origintime(origintime)
+        if self._setparamcallback is not None:
+            self._setparamcallback('origintime', origintime)
+        self._origintime = origintime
+
+    def set_scalingfactor(self, scalingfactor):
+        scalingfactor = _check_scalingfactor(scalingfactor)
+        if self._setparamcallback is not None:
+            self._setparamcallback('scalingfactor', scalingfactor)
+        self._scalingfactor = scalingfactor
+
+    def set_startdatetime(self, startdatetime):
+        startdatetime = _check_startdatetime(startdatetime)
+        if self._setparamcallback is not None:
+            self._setparamcallback('startdatetime', startdatetime)
+        self._startdatetime = startdatetime
+
+    def set_unit(self, unit):
+        unit = _check_unit(unit)
+        if self._setparamcallback is not None:
+            self._setparamcallback('unit', unit)
+        self._unit = unit
 
     def __str__(self):
-        totdur = duration_string(self._nframes * self._dt)
+        totdur = duration_string(self._nframes * self.dt)
         if self._nchannels == 1:
             chstr = "channel"
         else:
@@ -211,7 +267,7 @@ class BaseSnd:
         """the parameters that need to be saved when a child class is
         disk-persistent"""
 
-        return {'dtype': self.dtype,
+        return {'dtype': self.dtype, # of the raw frame values when read
                 'duration': duration_string(self.duration),
                 'encoding': self.encoding,
                 'fs': self.fs,
@@ -220,9 +276,14 @@ class BaseSnd:
                 'nframes': self.nframes,
                 'origintime': self.origintime,
                 'scalingfactor': self.scalingfactor,
+                'sndtype': self._classid,
+                'sndversion': self._version,
                 'startdatetime': str(self.startdatetime),
-                'unit': self._unit,
+                'unit': self._unit
                 }
+
+    def info(self):
+        return self._saveparams
 
     def samplingtimes(self):
         """
@@ -292,7 +353,7 @@ class BaseSnd:
                 % (offendingtimes, 0, self.duration))
         # calculate
         if nearest_boundary:
-            index = (np.floor((time + self.origintime + self._dt / 2.0)
+            index = (np.floor((time + self.origintime + self.dt / 2.0)
                               * self._fs)).astype(np.int64)
         else:
             index = (np.floor((time + self.origintime)
@@ -347,11 +408,11 @@ class BaseSnd:
     def frameindex_to_sndtime(self, frameindex, where='start'):
         frameindex = np.asanyarray(frameindex)
         if where == 'start':
-            return frameindex * self._dt
+            return frameindex * self.dt
         elif where == 'center':
-            return (0.5 + frameindex) * self._dt
+            return (0.5 + frameindex) * self.dt
         elif where == 'end':
-            return (1 + frameindex) * self._dt
+            return (1 + frameindex) * self.dt
         else:
             raise ValueError(f"'where' argument should be either 'start', "
                              f"'center', or 'end', not '{where}'")
@@ -481,7 +542,7 @@ class BaseSnd:
                                            normalizeinttoaudiofloat=normalizeinttoaudiofloat):
             if copy:
                 window = window.copy()
-            elapsedsec = (nread + startframe) * self._dt
+            elapsedsec = (nread + startframe) * self.dt
             if str(self.startdatetime) == 'NaT':
                 startdatetime = 'NaT'
             else:
@@ -492,18 +553,90 @@ class BaseSnd:
                       origintime=origintime, metadata=None, encoding=self.encoding)
             nread += window.shape[0]
 
-    # TODO fix
-    def to_audiofile(self, path, format=None, subtype=None, endian=None, startframe=None, endframe=None,
-                     starttime=None, endtime=None, startdatetime=None, enddatetime=None, overwrite=False,
+    # TODO fix add additional params like origintime etc
+    def to_audiofile(self, path, format=None, encoding=None, endian=None,
+                     startframe=None, endframe=None, starttime=None, endtime=None,
+                     startdatetime=None, enddatetime=None, overwrite=False,
                      channelindex=None):
-        from .audiofile import to_audiofile
-        if subtype is None:
-            subtype = self.encoding
-        return to_audiofile(self, path=path, format=format, subtype=subtype, endian=endian,
-                            startframe=startframe, endframe=endframe, starttime=starttime,
-                            endtime=endtime, startdatetime=startdatetime,
-                            enddatetime=enddatetime, channelindex=channelindex,
-                            overwrite=overwrite)
+        """
+        Save sound object to an audio file.
+
+        Parameters
+        ----------
+        path
+        format
+        encoding
+        endian
+        startframe: {int, None}
+            The index of the frame at which the exported sound should start.
+            Defaults to None, which means the start of the sound (index 0).
+        endframe: {int, None}
+            The index of the frame at which the exported sound should end.
+            Defaults to None, which means the end of the sound.
+        starttime
+        endtime
+        startdatetime
+        enddatetime
+        overwrite
+        channelindex
+
+        Returns
+        -------
+        AudioFile object
+
+        """
+        import soundfile as sf
+        from .audiofile import AudioFile, defaultaudioformat, \
+            defaultaudioencoding, available_audioencodings, available_audioformats
+        startframe, endframe = self._check_episode(startframe=startframe,
+                                                   endframe=endframe,
+                                                   starttime=starttime,
+                                                   endtime=endtime,
+                                                   startdatetime=startdatetime,
+                                                   enddatetime=enddatetime)
+        if encoding is None:
+            encoding = self.encoding
+        if format is None:
+            if isinstance(self, AudioFile):
+                format = self._fileformat
+            else:
+                format = defaultaudioformat
+        format = format.upper()
+        if format not in available_audioformats:
+            raise ValueError(f"'{format}' format not availabe (choose from: "
+                             f"{available_audioformats.keys()})")
+        if encoding is None:
+            if isinstance(self, AudioFile):
+                if self._fileformatsubtype in available_audioencodings(format):
+                    encoding = self._fileformatsubtype
+            else:
+                encoding = defaultaudioencoding[format]
+        path = Path(path)
+        if path.suffix != f'.{format.lower()}':
+            path = path.with_suffix(f'.{format.lower()}')
+        samplerate = int(round(self.fs))
+        if path.exists() and not overwrite:
+            raise IOError(
+                "File '{}' already exists; use 'overwrite'".format(path))
+        if channelindex is not None:
+            nchannels = len(np.ones([1, self.nchannels])[0, channelindex])
+        else:
+            nchannels = self.nchannels
+        startdatetime = self.frameindex_to_datetime(startframe,
+                                                    where='start')
+        origintime = self.origintime - startframe / float(self.fs)
+        with sf.SoundFile(file=str(path), mode='w', samplerate=samplerate,
+                          channels=nchannels, subtype=encoding, endian=endian,
+                          format=format) as f:
+            for window in self.iterread_frames(blocklen=samplerate,
+                                            startframe=startframe,
+                                            endframe=endframe,
+                                            channelindex=channelindex):
+                f.write(window)
+        return AudioFile(path, startdatetime=startdatetime, origintime=origintime,
+                         metadata=self.metadata, fs=self.fs, unit=self.unit,
+                         scalingfactor=self.scalingfactor, dtype=self.dtype)
+
     #FIXME wrap
     #@wraptimeparamsmethod
     def to_darrsnd(self, path=None, dtype=None, metadata=None, mode='r',
@@ -525,24 +658,25 @@ class BaseSnd:
         asarray(path=darrpath, array=frames, dtype=dtype,
                 accessmode=accessmode, overwrite=overwrite)
         d = self._saveparams  # standard params that need saving
-        _create_sndinfo(sndpath, object=DarrSnd, d=d, overwrite=overwrite)
+        _create_sndinfo(sndpath, d=d, overwrite=overwrite)
         return DarrSnd(sndpath, accessmode=accessmode)
 
 
 
-    def to_audiosnd(self, path, format=None, subtype=None, endian=None,
-                        startframe=None, endframe=None, starttime=None,
-                        endtime=None, startdatetime=None, enddatetime=None,
-                        channelindex=None, overwrite=False):
+    def to_audiosnd(self, path, format=None, encoding=None, endian=None,
+                    startframe=None, endframe=None, starttime=None,
+                    endtime=None, startdatetime=None, enddatetime=None,
+                    channelindex=None, accessmode='r', overwrite=False):
+
         from .audiofile import AudioSnd
-        af = self.to_audiofile(path, format=format, subtype=subtype,
+        af = self.to_audiofile(path, format=format, encoding=encoding,
                                endian=endian, startframe=startframe,
                                endframe=endframe, starttime=starttime,
                                endtime=endtime, startdatetime=startdatetime,
                                enddatetime=enddatetime, overwrite=overwrite,
                                channelindex=channelindex)
-        path = af.path.with_suffix(AudioSnd._suffix)
-        return af.as_audiosnd(path, move=True, overwrite=overwrite)
+        path = af.path.with_suffix(SndInfo._suffix)
+        return af.as_audiosnd(accessmode=accessmode, overwrite=overwrite)
 
     # also share code with darr case
     @wraptimeparamsmethod
@@ -572,8 +706,8 @@ class BaseSnd:
             else:
                 ts = duration_string(nframes / self.fs)
             fname = f'chunk_{i:0>3}_{ts}'
-            af = s.to_audiofile(dd.path/fname, format=format,
-                                subtype=subtype, endian=endian,
+            af = s.to_audiofile(dd.path / fname, format=format,
+                                encoding=subtype, endian=endian,
                                 overwrite=overwrite)
             fnames.append(af.path.name)
             if i == 0:
@@ -649,17 +783,6 @@ def dtypetoencoding(dtype):
     if not dtype.name in mapping:
         raise TypeError(f"dtype '{dtype.name}' is not supported")
     return mapping[dtype.name]
-
-
-class DiskSnd:
-
-    _classid = 'DiskSnd'
-    _classdescr = 'sound stored on disk, parent for most other classes'
-    _version = get_versions()['version']
-
-    _sndinfopath = 'sndinfo.json'
-    _metadatapath = 'metadata.json'
-
 
 
 # FIXME rename this to RAMSnd?

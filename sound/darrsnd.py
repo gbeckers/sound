@@ -27,10 +27,12 @@ class DarrSnd(BaseSnd, SndInfo):
 
     """
 
-    _framespath = 'frames'
+    _framespath = 'frames.darr'
     _classid = "DarrSnd"
-    _suffix = '.darrsnd'
+    _suffix = '.snd'
     _fileformat = 'darrsnd'
+    _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
+                       'startdateime', 'unit')
 
     def __init__(self, path, accessmode='r'):
         SndInfo.__init__(self, path=path, accessmode=accessmode)
@@ -39,12 +41,13 @@ class DarrSnd(BaseSnd, SndInfo):
         if frames.ndim != 2:
             raise ValueError(f"`Darr Array` has to have 2 dimensions (now: {frames.ndim})")
         nframes, nchannels = frames.shape
-        sndinfo = self.read_sndinfo()
+        si = self.sndinfo
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels,
-                         fs=sndinfo['fs'], dtype=frames.dtype,
-                         startdatetime=sndinfo['startdatetime'],
-                         origintime=sndinfo['origintime'], metadata=self.metadata,
-                         scalingfactor=None, unit=sndinfo['unit'])
+                         fs=si['fs'], dtype=frames.dtype,
+                         startdatetime=si['startdatetime'],
+                         origintime=si['origintime'], metadata=self.metadata,
+                         scalingfactor=None, unit=si['unit'],
+                         setparamcallback=self._set_parameter)
 
         self.open = self._frames.open
 
@@ -105,6 +108,6 @@ def create_darrsnd(path, nframes, nchannels, fs, startdatetime='NaT',
                    startdatetime=startdatetime, origintime=origintime,
                    unit=unit, metadata=metadata)
     d = bsnd._saveparams()
-    _create_sndinfo(sndpath, object=DarrSnd, d=d, overwrite=overwrite)
+    _create_sndinfo(sndpath, d=d, overwrite=overwrite)
     return DarrSnd(sndpath, accessmode=accessmode)
 
