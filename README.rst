@@ -1,6 +1,8 @@
 Sound
 =====
 
+**NOTE: DO NOT USE THIS VERSION YET, in middle of refactoring.**
+
 *Sound* is a package for working with acoustic data in Python. It is designed
 for scientific use cases, but it may also be of interest to soundscape
 recordists, or anyone who wants to work efficiently with very long sounds,
