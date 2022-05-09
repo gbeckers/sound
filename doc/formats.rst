@@ -1,18 +1,20 @@
 Supported Formats
 =================
 
-For reading and writing audio data *Sound* depends on the Python library 
-*SoundFile*, which in turn depends on the C library *libsndfile*. In 
-addition, *Sound* supports reading and writing in Darr format, which is 
-a format for scientific numeric data. The latter is recommended for easy 
-readability of data outside of the world of audio (such as tools for 
-scientific computing) or when very efficient read access to very large files 
-(that do not fit in RAM) is required.
+For reading and writing audio data *Sound* depends on the Python library
+`*SoundFile* <https://github.com/bastibe/python-soundfile>`__, which in
+turn depends on the C library `*libsndfile*
+<https://github.com/libsndfile/libsndfile>`__. In addition, *Sound* supports
+reading and writing in `Darr <https://darr.readthedocs.io/en/latest>`__
+format, which is a format for scientific numeric data. The latter is
+recommended for easy readability of data outside of the world of audio (such
+as tools for scientific computing) or when very efficient read access to
+very large files (that do not fit in RAM) is required.
 
-Supported Audio Formats and Encodings
--------------------------------------
+Audio Formats and Encodings
+---------------------------
 
-For audio formats we depend on *SoundFile*, which depends on *libsndfile.
+For audio formats *Sound* depends on *SoundFile*, which depends on *libsndfile.
 The table below is based on this, and additionally indicates the default
 encodings for each format as used by *Sound*. Note that these are different
 from the defaults used by *SoundFile*.
@@ -83,7 +85,8 @@ from the defaults used by *SoundFile*.
 Darr encodings
 --------------
 
-Darr supports any numeric Numpy dtype. Generally I would recommend 'float32'.
-For audio compatibility, 'int16', 'int32' and 'int64' would make sense for
-direct compatibility with PCM encodings, while 'float32'  and 'float64' would
-make sense for compatibility with FLOAT and DOUBLE encodings.
+`Darr <https://darr.readthedocs.io/en/latest>`__ supports any numeric Numpy dtype.
+Generally I would recommend 'float32' for final data files, and 'float64' for data
+that will undergo further processing. For audio compatibility, 'int16', 'int32' and
+'int64' would make sense for direct compatibility with PCM encodings, while 'float32'
+and 'float64' would make sense for compatibility with FLOAT and DOUBLE encodings.
