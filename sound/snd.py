@@ -587,7 +587,7 @@ class BaseSnd:
         """
         import soundfile as sf
         from .audiofile import AudioFile, defaultaudioformat, \
-            defaultaudioencoding, available_audioencodings, available_audioformats
+            defaultaudioencoding, availableaudioencodings, availableaudioformats
         startframe, endframe = self._check_episode(startframe=startframe,
                                                    endframe=endframe,
                                                    starttime=starttime,
@@ -602,12 +602,12 @@ class BaseSnd:
             else:
                 format = defaultaudioformat
         format = format.upper()
-        if format not in available_audioformats:
+        if format not in availableaudioformats:
             raise ValueError(f"'{format}' format not availabe (choose from: "
-                             f"{available_audioformats.keys()})")
+                             f"{availableaudioformats.keys()})")
         if encoding is None:
             if isinstance(self, AudioFile):
-                if self._fileformatsubtype in available_audioencodings(format):
+                if self._fileformatsubtype in availableaudioencodings(format):
                     encoding = self._fileformatsubtype
             else:
                 encoding = defaultaudioencoding[format]

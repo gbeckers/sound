@@ -6,38 +6,42 @@ from .sndinfo import SndInfo, _create_sndinfo
 from .snd import BaseSnd
 from .utils import wraptimeparamsmethod
 
-__all__ = ["AudioFile", "AudioSnd", "available_audioformats",
-           "available_audioencodings"]
+__all__ = ["AudioFile", "AudioSnd", "availableaudioformats",
+           "availableaudioencodings"]
 
 defaultaudioformat = 'WAV'
-defaultaudioencoding = {'AIFF': 'FLOAT',
-                        'AU': 'FLOAT',
+defaultaudioencoding = {'AIFF': 'PCM_24',
+                        'AU': 'PCM_24',
                         'AVR': 'PCM_16',
-                        'CAF': 'FLOAT',
+                        'CAF': 'PCM_24',
                         'FLAC': 'PCM_24',
                         'HTK': 'PCM_16',
                         'IRCAM': 'FLOAT',
                         'MAT4': 'FLOAT',
                         'MAT5': 'FLOAT',
                         'MPC2K': 'PCM_16',
-                        'NIST': 'PCM_32',
+                        'NIST': 'PCM_24',
                         'OGG': 'VORBIS',
                         'PAF': 'PCM_24',
                         'PVF': 'PCM_32',
                         'RAW': 'FLOAT',
-                        'RF64': 'FLOAT',
+                        'RF64': 'PCM24',
                         'SD2': 'PCM_24',
                         'SDS': 'PCM_24',
                         'SVX': 'PCM_16',
                         'VOC': 'PCM_16',
-                        'W64': 'FLOAT',
+                        'W64': 'PCM_24',
                         'WAV': 'PCM_24',
-                        'WAVEX': 'FLOAT',
+                        'WAVEX': 'PCM_24',
                         'WVE': 'ALAW',
                         'XI': 'DPCM_16'}
 
-available_audioformats = sf.available_formats()
-available_audioencodings = sf.available_subtypes()
+_sfformats = sf.available_formats()
+_sfsubtypes = sf.available_subtypes()
+_audioformatkeys = sorted(list(_sfformats.keys()))
+_audioencodingkeys = sorted(list(_sfsubtypes.keys()))
+availableaudioformats = {key: _sfformats[key] for key in _audioformatkeys}
+availableaudioencodings = {key: _sfsubtypes[key] for key in _audioencodingkeys}
 
 
 # because we read with soundfile, which only reads int16, int32, float32, float64
@@ -267,3 +271,43 @@ class AudioSnd(AudioFile, SndInfo):
         d['sndinfofilepath'] = str(self._sndinfo.path)
         return {k: d[k] for k in sorted(d.keys())}
 
+# _audioformatkeys
+# _audioencodingkeys
+# availableaudioformats
+# availableaudioencodings
+
+def audiocompatibilitytable_rst():
+    maxaenckeylen = max(len(k) for k in _audioencodingkeys)
+    sl = [] # stringlist
+    # first line, horizontal border of table
+    sl.append('+' + ((maxaenckeylen + 2) * '-') + '+')
+    for formatkey in _audioformatkeys:
+        sl.append(((len(formatkey) + 2) * '-') + '+')
+    sl.append('\n')
+    hborder = "".join(sl) # we need it after header row
+    # header row
+    sl.append(f'| ' + (maxaenckeylen * ' ') + ' |')
+    for formatkey in _audioformatkeys:
+        sl.append(f' {formatkey} |')
+    sl.append(f"\n{hborder.replace('-','=')}")
+    # next rows
+    for enckey in _audioencodingkeys:
+        # row label
+        sl.append(f'| {enckey}' + ((maxaenckeylen - len(enckey)) * ' ') + ' |')
+        # cols
+        for formatkey in _audioformatkeys:
+            if sf.check_format(formatkey, enckey):
+                r = ' + ' + ((len(formatkey) - 1) * ' ') + '|'
+            else:
+                r = ((len(formatkey) + 1 ) * ' ') + ' |'
+            if enckey == defaultaudioencoding[formatkey]:
+                r = r.replace('+', '*')
+            sl.append(r)
+        sl.append('\n')
+    sl.append(f'{hborder}\n')
+    sl.append("Format codes: ")
+    sl.extend([f'{k}: {l}, ' for k,l in availableaudioformats.items()])
+    sl.append("\nEncoding codes: ")
+    sl.extend([f'{k}: {l}, ' for k, l in availableaudioencodings.items()])
+    sl.append('\n')
+    return "".join(sl)
