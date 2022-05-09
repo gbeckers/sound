@@ -2,9 +2,9 @@ Supported Formats
 =================
 
 For reading and writing audio data *Sound* depends on the Python library
-*`SoundFile <https://github.com/bastibe/python-soundfile>`__*, which in
-turn depends on the C library *`libsndfile
-<https://github.com/libsndfile/libsndfile>`__*. In addition, *Sound* supports
+`SoundFile <https://github.com/bastibe/python-soundfile>`__, which in
+turn depends on the C library `libsndfile
+<https://github.com/libsndfile/libsndfile>`__. In addition, *Sound* supports
 reading and writing in `Darr <https://darr.readthedocs.io/en/latest>`__
 format, which is a format for scientific numeric data. The latter is
 recommended for easy readability of data outside of the world of audio (such
