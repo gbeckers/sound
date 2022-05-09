@@ -10,10 +10,10 @@ What problem does it solve?
 ---------------------------
 
 There various excellent tools for working with audio files in Python. However,
-audio files can be cumbersome to work with in scientific applications, because
+audio files can be cumbersome to work with in scientific applications because
 they were not designed for this type of work.
 
-Some examples include the ability to work efficiently with very long recordings
+Some examples include working efficiently with very long recordings
 (think many hours, days, weeks), with zillions of short sound
 events, with non-integer sampling rates (needed to precisely synchronize
 acoustic data with other data), with absolute sound levels or absolute time, or
@@ -23,8 +23,10 @@ but they do matter in science and other applications.
 *Sound* is intended to solve this problem.
 
 In its simplest use case, *Sound* works with (collections of) normal audio
-files. However it improves their usefulness by organizing important metadata in
-separate text-based files. For more heavy-duty work, *Sound* works with
+files. This ensures compatibility with the audio world. However it improves
+their usefulness by organizing important metadata in separate text-based files.
+
+For more heavy-duty work, *Sound* works with
 `Darr <https://darr.readthedocs.io/en/latest>`__-based data, which is a format
 designed for scientific use and supports very efficient random access
 reading/writing of numeric data. This way, you can efficiently work very
