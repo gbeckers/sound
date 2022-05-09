@@ -297,17 +297,17 @@ def audiocompatibilitytable_rst():
         # cols
         for formatkey in _audioformatkeys:
             if sf.check_format(formatkey, enckey):
-                r = ' + ' + ((len(formatkey) - 1) * ' ') + '|'
+                r = ' Y ' + ((len(formatkey) - 1) * ' ') + '|'
             else:
                 r = ((len(formatkey) + 1 ) * ' ') + ' |'
             if enckey == defaultaudioencoding[formatkey]:
-                r = r.replace('+', '*')
+                r = r.replace('Y', 'D')
             sl.append(r)
         sl.append('\n')
-    sl.append(f'{hborder}\n')
-    sl.append("Format codes: ")
-    sl.extend([f'{k}: {l}, ' for k,l in availableaudioformats.items()])
-    sl.append("\nEncoding codes: ")
-    sl.extend([f'{k}: {l}, ' for k, l in availableaudioencodings.items()])
+        sl.append(hborder)
+    sl.append("\nFormats: ")
+    sl.extend([f'**{k}**: {l}, ' for k,l in availableaudioformats.items()])
+    sl.append("\nEncodings: ")
+    sl.extend([f'**{k}**: {l}, ' for k, l in availableaudioencodings.items()])
     sl.append('\n')
     return "".join(sl)
