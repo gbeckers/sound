@@ -2,9 +2,9 @@ Supported Formats
 =================
 
 For reading and writing audio data *Sound* depends on the Python library
-`*SoundFile* <https://github.com/bastibe/python-soundfile>`__, which in
-turn depends on the C library `*libsndfile*
-<https://github.com/libsndfile/libsndfile>`__. In addition, *Sound* supports
+*`SoundFile <https://github.com/bastibe/python-soundfile>`__*, which in
+turn depends on the C library *`libsndfile
+<https://github.com/libsndfile/libsndfile>`__*. In addition, *Sound* supports
 reading and writing in `Darr <https://darr.readthedocs.io/en/latest>`__
 format, which is a format for scientific numeric data. The latter is
 recommended for easy readability of data outside of the world of audio (such
@@ -14,10 +14,11 @@ very large files (that do not fit in RAM) is required.
 Audio Formats and Encodings
 ---------------------------
 
-For audio formats *Sound* depends on *SoundFile*, which depends on *libsndfile.
-The table below is based on this, and additionally indicates the default
-encodings for each format as used by *Sound*. Note that these are different
-from the defaults used by *SoundFile*.
+For audio formats, *Sound* itself depends on *SoundFile*, which depends on
+*libsndfile*. The table below is based on this, and additionally indicates
+the default encodings for each format as used by *Sound*. Note that these are
+different from the defaults used by *SoundFile*. If available, we prefer PCM_24
+because it is widely supported in audio applications and has good resolution.
 
 "Y" means the encoding is supported.
 
