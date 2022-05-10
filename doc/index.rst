@@ -11,28 +11,29 @@ What problem does it solve?
 
 There various excellent tools for working with audio files in Python. However,
 audio files can be cumbersome to work with in scientific applications because
-they were not designed for this type of work.
+they were not designed for this type of work in mind.
 
 Some examples include working efficiently with very long recordings
-(think many hours, days, weeks), with zillions of short sound
-events, with non-integer sampling rates (needed to precisely synchronize
-acoustic data with other data), with absolute sound levels or absolute time, or
-various types of metadata. These things do not matter when playing music or speech,
-but they do matter in science and other applications.
+(think many hours, days, weeks) that do not fit into RAM, with zillions of
+short sound events, with non-integer sampling rates (needed to precisely
+synchronize acoustic data with other data, or simply for accuracy), with
+absolute sound levels or absolute time, or various types of metadata. These
+things do not matter when playing music or speech on an audio device, but
+they can matter very much in scientific work and other applications.
 
 *Sound* is intended to solve this problem.
 
 In its simplest use case, *Sound* works with (collections of) normal audio
 files. This ensures compatibility with the audio world. However it improves
-their usefulness by organizing important metadata in separate text-based files.
+their usefulness by organizing important metadata in separate text-based
+(JSON) files.
 
 For more heavy-duty work, *Sound* works with
 `Darr <https://darr.readthedocs.io/en/latest>`__-based data, which is a format
 designed for scientific use and supports very efficient random access
-reading/writing of numeric data. This way, you can efficiently work very
-large recordings (that won't fit in RAM memory), or zillions of recorded
-sound episodes which would otherwise be inefficiently stored in zillions of
-separate files.
+reading/writing of disk-based numeric data. This way, you can efficiently work
+very large recordings, or zillions of recorded sound episodes which would otherwise
+be inefficiently stored in zillions of separate files.
 
 *Sound* is in its early stages of development (alpha) stage. It will be
 complemented by the *SoundLab* library for sound analysis and visualization.

@@ -1,7 +1,10 @@
 import numpy as np
+from pathlib import Path
 from .snd import Snd
+from .audiofile import AudioFile
 
-__all__ = ['noise_PCM32', 'sine_DOUBLE', 'sine_PCM32']
+
+__all__ = ['testaudiofile', 'noise_PCM32', 'sine_DOUBLE', 'sine_PCM32']
 
 #  24 bits	−8388608 to 8388607
 
@@ -30,4 +33,8 @@ def noise_PCM32(nframes=441, fs=44100, seed=None):
     frames = np.round(snd._frames * audiofloat_to_PCM32_factor).astype('int32')
     return Snd(frames, fs=snd.fs, metadata=snd.metadata)
 
+
+def testaudiofile():
+    p = Path(__file__).parent.absolute() / 'testsndfiles' / 'testsnd_zf.wav'
+    return AudioFile(p)
 

@@ -271,12 +271,18 @@ class AudioSnd(AudioFile, SndInfo):
         d['sndinfofilepath'] = str(self._sndinfo.path)
         return {k: d[k] for k in sorted(d.keys())}
 
-# _audioformatkeys
-# _audioencodingkeys
-# availableaudioformats
-# availableaudioencodings
 
 def audiocompatibilitytable_rst():
+    """Creates a table with info on compatibility between audio formats and
+    encodings.
+
+    To be used for creating documentation.
+
+    Returns
+    -------
+    str
+
+    """
     maxaenckeylen = max(len(k) for k in _audioencodingkeys)
     sl = [] # stringlist
     # first line, horizontal border of table

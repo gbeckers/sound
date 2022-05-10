@@ -1,0 +1,20 @@
+{
+    "audiofilename": "testsnd_zf.wav",
+    "dtype": "int32",
+    "duration": "589.45 milliseconds",
+    "encoding": "PCM_24",
+    "endiannes": "FILE",
+    "fileformat": "WAVEX",
+    "fs": 44100.3,
+    "metadata": {
+        "recorder": "Olympus LS-5"
+    },
+    "nchannels": 1,
+    "nframes": 25995,
+    "origintime": 0.0,
+    "scalingfactor": null,
+    "sndtype": "AudioSnd",
+    "sndversion": "0.2.0+16.gc727cb5.dirty",
+    "startdatetime": "2022-05-10T10:05:01",
+    "unit": null
+}

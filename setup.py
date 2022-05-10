@@ -18,6 +18,8 @@ setuptools.setup(
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     packages=['sound', 'sound.tests'],
+    package_data={'sound.testsndfiles': ['testsnd_zf.wav']},
+    include_package_data=True,
     url='https://github.com/gbeckers/sound',
     license='BSD-3',
     author='Gabriel J.L. Beckers',
