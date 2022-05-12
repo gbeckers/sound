@@ -36,6 +36,22 @@ defaultaudioencoding = {'AIFF': 'PCM_24',
                         'WVE': 'ALAW',
                         'XI': 'DPCM_16'}
 
+audiofloat_to_PCM_factor = {
+    'PCM_32': 0x7FFFFFFF,     # 2147483647
+    'PCM_24': 0x7FFFFF,     # 8388607
+    'PCM_16': 0x7FFF,     # 32767
+    'PCM_S8': 0x7F,     # 127
+    'PCM_U8': 0xFF,     # 255
+}
+
+PCM_32_to_audiofloat_factor = {
+    'PCM_32': 1 / 0x80000000, # 1 / 2147483648
+    'PCM_24': 1 / 0x800000, # 1 / 8388607
+    'PCM_16': 1 / 0x8000, # 1 / 32767
+    'PCM_S8': 1 / 0x80, # 1 / 127
+    'PCM_U8': 1 / 0xFF, # 1 / 255
+}
+
 _sfformats = sf.available_formats()
 _sfsubtypes = sf.available_subtypes()
 _audioformatkeys = sorted(list(_sfformats.keys()))
@@ -70,7 +86,6 @@ class AudioFile(BaseSnd):
     Parameters
     ----------
     path: str or pathlib.Path
-    dtype: numpy dtype, {'float32' | 'float64' | 'int16' | 'int32'| None}
     fs
     startdatetime
     origintime
@@ -87,7 +102,7 @@ class AudioFile(BaseSnd):
 
     def __init__(self, path, startdatetime='NaT', origintime=0.0,
                  mode='r', fs=None, metadata=None, scalingfactor=None,
-                 unit=None, dtype=None, **kwargs):
+                 unit=None, **kwargs):
         self._path = Path(path)
         self._mode = mode
         with sf.SoundFile(str(path)) as f:
@@ -98,8 +113,7 @@ class AudioFile(BaseSnd):
             self._fileformat = f.format
             self._fileformatsubtype = f.subtype
             self._endianness = f.endian
-            if dtype is None:
-                dtype = encodingtodtype.get(self._fileformatsubtype, 'float64')
+            dtype = encodingtodtype.get(self._fileformatsubtype, 'float64')
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
                          dtype=dtype, startdatetime=startdatetime,
                          origintime=origintime, metadata=metadata,
@@ -169,10 +183,30 @@ class AudioFile(BaseSnd):
 
     # FIXME think about dtypes here: what should we allow
     @wraptimeparamsmethod
-    def read_frames(self,  startframe=None, endframe=None, starttime=None,
+    def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
                     channelindex=None, dtype=None, out=None,
-                    normalizeinttoaudiofloat=False):
+                    normalizeaudio=False):
+        """Read audio frames (timesamples, channels) from file.
+
+        Parameters
+        ----------
+        startframe
+        endframe
+        starttime
+        endtime
+        startdatetime
+        enddatetime
+        channelindex
+        dtype
+        out
+        normalizeaudio: bool, default: False
+            Determines whether or not integer audio encodings such as PCM_16 should be normalized
+
+        Returns
+        -------
+
+        """
         if dtype is None:
             dtype = self._dtype
         with self._openfile() as af:
@@ -196,18 +230,20 @@ class AudioFile(BaseSnd):
 
             if channelindex is not None:
                 frames = frames[:,channelindex]
-            if normalizeinttoaudiofloat: # 'int32', 'int16'
+            if normalizeaudio: # 'int32', 'int16'
                 if frames.dtype == np.int32:
-                    frames *= 1 / 0x80000000
+                    normfactor = 0x80000000
                 elif frames.dtype == np.int16:
-                    frames *= 1 / 0x8000
+                    normfactor = 0x8000
                 else:
-                    raise TypeError(f"'normalizeinttoaudiofloat' parameter is "
-                                    f"True, but can only applied to int16 and "
+                    raise TypeError(f"'normalizeaudio' parameter is "
+                                    f"True, but can only be applied to int16 and "
                                     f"int32 data; received {frames.dtype} "
                                     f"data.")
+                frames = frames.astype('float64')
+                frames /= normfactor
             if self.scalingfactor is not None:
-                frames *= self.scalingfactor
+                frames = frames * self.scalingfactor
             return frames
 
     def info(self, verbose=False):

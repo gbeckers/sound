@@ -449,7 +449,7 @@ class BaseSnd:
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
                     channelindex=None, dtype='float64',
-                    normalizeinttoaudiofloat=False):
+                    normalizeaudio=False):
         pass
 
     @contextmanager
@@ -462,7 +462,7 @@ class BaseSnd:
                         starttime=None, endtime=None, startdatetime=None,
                         enddatetime=None, channelindex=None,
                         firstblocklen=None,
-                        dtype=None, normalizeinttoaudiofloat=False):
+                        dtype=None, normalizeaudio=False):
         with self.open():
             if firstblocklen is not None:
                 if firstblocklen > endframe:
@@ -484,15 +484,15 @@ class BaseSnd:
                                        endframe=windowend,
                                        channelindex=channelindex,
                                        dtype=dtype,
-                                       normalizeinttoaudiofloat=normalizeinttoaudiofloat)
+                                       normalizeaudio=normalizeaudio)
 
     @wraptimeparamsmethod
     def read(self, startframe=None, endframe=None, starttime=None,
              endtime=None, startdatetime=None, enddatetime=None,
-             channelindex=None, dtype=None, normalizeinttoaudiofloat=False):
+             channelindex=None, dtype=None, normalizeaudio=False):
         frames = self.read_frames(startframe=startframe, endframe=endframe,
-                              channelindex=channelindex, dtype=dtype,
-                              normalizeinttoaudiofloat=normalizeinttoaudiofloat)
+                                  channelindex=channelindex, dtype=dtype,
+                                  normalizeaudio=normalizeaudio)
         startdatetime = self.frameindex_to_datetime(startframe,
                                                     where='start')
         origintime = self.origintime - startframe / float(self.fs)
@@ -513,7 +513,7 @@ class BaseSnd:
                  startdatetime=None, enddatetime=None, blocklen=None,
                  stepsize=None, include_remainder=True, channelindex=None,
                  splitonclockhour=False, copy=False, dtype=None,
-                 normalizeinttoaudiofloat=False):
+                 normalizeaudio=False):
         if splitonclockhour:
             hour = int(round(self.fs * 60 * 60))
             if blocklen is None:
@@ -539,7 +539,7 @@ class BaseSnd:
                                            channelindex=channelindex,
                                            firstblocklen=firstblocklen,
                                            dtype=dtype,
-                                           normalizeinttoaudiofloat=normalizeinttoaudiofloat):
+                                           normalizeaudio=normalizeaudio):
             if copy:
                 window = window.copy()
             elapsedsec = (nread + startframe) * self.dt
@@ -635,7 +635,7 @@ class BaseSnd:
                 f.write(window)
         return AudioFile(path, startdatetime=startdatetime, origintime=origintime,
                          metadata=self.metadata, fs=self.fs, unit=self.unit,
-                         scalingfactor=self.scalingfactor, dtype=self.dtype)
+                         scalingfactor=self.scalingfactor)
 
     #FIXME wrap
     #@wraptimeparamsmethod
@@ -855,19 +855,19 @@ class Snd(BaseSnd):
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
                     channelindex=None, dtype=None, order='K', ndmin=2,
-                    normalizeinttoaudiofloat=False):
+                    normalizeaudio=False):
         if channelindex is None:
             channelindex = slice(None,None,None)
         frames = self._frames[slice(startframe, endframe), channelindex]
         frames = np.array(frames, copy=True, dtype=dtype, order=order,
                           ndmin=ndmin)
-        if normalizeinttoaudiofloat:  # 'int32', 'int16'
+        if normalizeaudio:  # 'int32', 'int16'
             if frames.dtype == np.int32:
                 frames *= 1 / 0x80000000
             elif frames.dtype == np.int16:
                 frames *= 1 / 0x8000
             else:
-                raise TypeError(f"'normalizeinttoaudiofloat' parameter is "
+                raise TypeError(f"'normalizeaudio' parameter is "
                                 f"True, but can only applied to int16 and "
                                 f"int32 data; received {frames.dtype} "
                                 f"data.")

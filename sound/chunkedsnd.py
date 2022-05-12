@@ -54,8 +54,8 @@ class ChunkedSnd(BaseSnd, SndInfo):
 
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
-                endtime=None, startdatetime=None, enddatetime=None,
-                channelindex=None, dtype=None, normalizeinttoaudiofloat=False):
+                    endtime=None, startdatetime=None, enddatetime=None,
+                    channelindex=None, dtype=None, normalizeaudio=False):
         if dtype is None:
             dtype = self._dtype
         frames = np.empty((endframe - startframe, self._nchannels), dtype)
