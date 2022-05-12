@@ -60,6 +60,7 @@ availableaudioformats = {key: _sfformats[key] for key in _audioformatkeys}
 availableaudioencodings = {key: _sfsubtypes[key] for key in _audioencodingkeys}
 
 
+#FIXME the next should be complete
 # because we read with soundfile, which only reads int16, int32, float32, float64
 encodingtodtype = {'PCM_S8': 'int16',
                    'PCM_U8': 'int16',
@@ -112,10 +113,11 @@ class AudioFile(BaseSnd):
                 fs = f.samplerate
             self._fileformat = f.format
             self._fileformatsubtype = f.subtype
+            self._dtype = encodingtodtype[f.subtype]
             self._endianness = f.endian
             dtype = encodingtodtype.get(self._fileformatsubtype, 'float64')
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
-                         dtype=dtype, startdatetime=startdatetime,
+                         startdatetime=startdatetime,
                          origintime=origintime, metadata=metadata,
                          encoding=f.subtype, scalingfactor=scalingfactor,
                          unit=unit, **kwargs)
@@ -268,7 +270,7 @@ class AudioFile(BaseSnd):
         else:
             metadata = self.metadata
         audiofilepath = self.path
-        sndinfopath = audiofilepath.with_suffix(SndInfo._suffix)
+        sndinfopath = Path(f'{audiofilepath}{SndInfo._suffix}')
         d = self._saveparams  # standard params that need saving
         d.update({'audiofilename': audiofilepath.name, # extra ones
                   'endiannes': self.endianness,
@@ -287,20 +289,27 @@ class AudioSnd(AudioFile, SndInfo):
     _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
                       'startdatetime', 'unit')
 
-    def __init__(self, path, dtype=None, accessmode='r'):
+    def __init__(self, path, accessmode='r'):
         path = Path(path)
-        SndInfo.__init__(self, path=path, accessmode=accessmode,
+        if path.suffix.upper()[1:] in availableaudioformats: # we received audio file, not info file
+            sndinfopath = Path(f'{path}{SndInfo._suffix}')
+        elif path.suffix in (SndInfo._suffix, SndInfo._suffix.upper()):
+            sndinfopath = path
+        else:
+            raise IOError(f"file {path} does not exist")
+        SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
                          settableparams=self._settableparams)
         si = self._sndinfo._read()
-        audiofilename = path.parent / si['audiofilename']
-        if dtype is None:
-            dtype = si['dtype']
-        AudioFile.__init__(self, path=audiofilename,
-                           fs=si['fs'], scalingfactor=si['scalingfactor'],
-                           startdatetime=si['startdatetime'],
-                           origintime=si['origintime'],
-                           metadata=si['metadata'], mode=accessmode,
-                           dtype=dtype, setparamcallback=self._set_parameter)
+        if si == {}: # there is no sndinfo file, we
+            AudioFile.__init__(self, path=path,
+                               setparamcallback=self._set_parameter)
+        else:
+            AudioFile.__init__(self, path=sndinfopath.stem,
+                               fs=si['fs'], scalingfactor=si['scalingfactor'],
+                               startdatetime=si['startdatetime'],
+                               origintime=si['origintime'],
+                               metadata=si['metadata'], mode=accessmode,
+                               setparamcallback=self._set_parameter)
 
     def info(self, verbose=False):
         d = super().info()

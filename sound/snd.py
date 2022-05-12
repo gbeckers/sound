@@ -66,7 +66,7 @@ class BaseSnd:
       
     """
 
-    def __init__(self, nframes, nchannels, fs, dtype, scalingfactor=None,
+    def __init__(self, nframes, nchannels, fs, scalingfactor=None,
                  encoding=None,  startdatetime='NaT', origintime=0.0, unit=None,
                  metadata=None, setparamcallback=None):
 
@@ -75,7 +75,7 @@ class BaseSnd:
         if not isinstance(fs, (int, float)):
             raise TypeError(f"`fs` can only be an int or float, not; {type(fs)}")
         self._fs = _check_fs(fs)
-        self._dtype = dtype
+        # self._dtype = dtype
         self._scalingfactor = _check_scalingfactor (scalingfactor)
         self._encoding = encoding
         self._startdatetime = _check_startdatetime(startdatetime)
@@ -106,10 +106,10 @@ class BaseSnd:
         """Sampling period in seconds."""
         return 1 / self._fs
 
-    @property
-    def dtype(self):
-        """Numeric data type of frames (numpy dtype)."""
-        return self._dtype
+    # @property
+    # def dtype(self):
+    #     """Numeric data type of frames (numpy dtype)."""
+    #     return self._dtype
 
     @property
     def scalingfactor(self):
@@ -167,31 +167,31 @@ class BaseSnd:
     def set_fs(self, fs):
         fs = _check_fs(fs)
         if self._setparamcallback is not None:
-            self._setparamcallback('fs', fs)
+            self._setparamcallback('fs', fs, self._saveparams)
         self._fs = fs
 
     def set_metadata(self, metadata):
         metadata = _check_metadata(metadata)
         if self._setparamcallback is not None:
-            self._setparamcallback('metadata', metadata)
+            self._setparamcallback('metadata', metadata, self._saveparams)
         self._metadata = metadata
 
     def set_origintime(self, origintime):
         origintime = _check_origintime(origintime)
         if self._setparamcallback is not None:
-            self._setparamcallback('origintime', origintime)
+            self._setparamcallback('origintime', origintime, self._saveparams)
         self._origintime = origintime
 
     def set_scalingfactor(self, scalingfactor):
         scalingfactor = _check_scalingfactor(scalingfactor)
         if self._setparamcallback is not None:
-            self._setparamcallback('scalingfactor', scalingfactor)
+            self._setparamcallback('scalingfactor', scalingfactor, self._saveparams)
         self._scalingfactor = scalingfactor
 
     def set_startdatetime(self, startdatetime):
         startdatetime = _check_startdatetime(startdatetime)
         if self._setparamcallback is not None:
-            self._setparamcallback('startdatetime', startdatetime)
+            self._setparamcallback('startdatetime', startdatetime, self._saveparams)
         self._startdatetime = startdatetime
 
     def set_unit(self, unit):
@@ -267,8 +267,7 @@ class BaseSnd:
         """the parameters that need to be saved when a child class is
         disk-persistent"""
 
-        return {'dtype': self.dtype, # of the raw frame values when read
-                'duration': duration_string(self.duration),
+        return {'duration': duration_string(self.duration),
                 'encoding': self.encoding,
                 'fs': self.fs,
                 'metadata': dict(self.metadata),

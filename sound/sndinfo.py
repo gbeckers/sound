@@ -30,10 +30,11 @@ class SndInfo:
             raise IOError(f"{self._classid} is not writeable. Use "
                           "`set_writeable` method to change this")
 
-    def _set_parameter(self, parameter, value):
+    def _set_parameter(self, parameter, value, infoparameters):
         self._check_writeable()
         if parameter in self._settableparams:
-            self._sndinfo[parameter] = value
+            infoparameters[parameter] = value
+            self._sndinfo.update(infoparameters)
         else:
             raise ValueError(f"cannot set `{parameter}` parameter on this "
                              f"object ({self._classid})")
