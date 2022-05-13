@@ -1,7 +1,7 @@
 Sound
 =====
 
-*Sound* is a package for working with acoustic data in Python. It is designed
+*Sound* is a package for working with sound data in Python. It is designed
 for scientific use cases, but it may also be of interest to soundscape
 recordists, or anyone who wants to work efficiently with very long sounds,
 with very many sounds, or with metadata.
@@ -33,14 +33,14 @@ For more heavy-duty work, *Sound* works with
 designed for scientific use and supports very efficient random access
 reading/writing of disk-based numeric data. This way, you can efficiently work
 very large recordings, or zillions of recorded sound episodes which would
-otherwise be inefficiently stored in zillions of separate files.
-
-*Sound* is in its early stages of development (alpha) stage. It will be
-complemented by the *SoundLab* library for sound analysis and visualization.
+otherwise be inefficiently stored in zillions of separate files. It also
+ensures your sound data can easily be used in various scientific computing
+environments.
 
 Status
 ------
-Sound is relatively new, and therefore in its alpha stage.
+*Sound* is in its early stages of development (alpha) stage. It will be
+complemented by the *SoundLab* library for sound analysis and visualization.
 
 
 .. toctree::

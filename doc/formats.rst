@@ -20,7 +20,7 @@ Audio
 The table below indicates the supported audio formats and audio encodings. If available,
 *Sound* uses PCM_24 because it is widely supported in audio applications and has good resolution.
 
-"Y" means the encoding is supported for a particluar file format.
+"Y" means the encoding is supported for a particular file format.
 
 "D" means the encoding is supported and used as a default.
 

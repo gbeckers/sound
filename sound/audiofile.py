@@ -62,14 +62,46 @@ availableaudioencodings = {key: _sfsubtypes[key] for key in _audioencodingkeys}
 
 #FIXME the next should be complete
 # because we read with soundfile, which only reads int16, int32, float32, float64
-encodingtodtype = {'PCM_S8': 'int16',
+
+# The choices for default dtypes for the different encodings is based on how
+# the data is read in libsndfile most directly. I figured this out by looking
+# at libsndfile source code.
+#     ALAC: Apple Lossless Audio Codec, libsndfile uses int32
+#     ALAW: A-Law telephony companding algorithm, libsndfile uses int16
+#     DPCM: Differential pulse-code modulation, libsndfile uses ints
+#     DWVW: Delta with variable word width, libsndfile uses ints
+#     G721_32: Adaptive differential pulse code modulation, libsndfile uses int16
+#     GSM610
+#     IMA_ADPCM: Interactive Multimedia Association ADPCM, libsndfile uses int16
+#     MS_ADPCM
+#     ULAW:  μ-law algorithm, libsndfile uses int16
+#     VORBIS: libsndfile uses float32
+#     VOX_ADPCM: Dialogic ADPCM, libsndfile uses int16
+encodingtodtype = {'ALAC_16': 'int16',
+                   'ALAC_20': 'int32',
+                   'ALAC_24': 'int32',
+                   'ALAC_32': 'int32',
+                   'ALAW': 'int16',
+                   'DOUBLE': 'float64',
+                   'DPCM_16': 'int16',
+                   'DPCM_8': 'int16',
+                   'DWVW_12': 'int16',
+                   'DWVW_16': 'int16',
+                   'DWVW_24': 'int32',
+                   'FLOAT': 'float32',
+                   'G721_32': 'int16',
+                   'G723_24': 'int16',
+                   'GSM610': 'int16',
+                   'IMA_ADPCM': 'int16',
+                   'MS_ADPCM': 'int16',
+                   'PCM_S8': 'int16',
                    'PCM_U8': 'int16',
                    'PCM_16': 'int16',
                    'PCM_24': 'int32',
                    'PCM_32': 'int32',
-                   'FLOAT': 'float32',
-                   'DOUBLE': 'float64'}
-
+                   'ULAW': 'int16',
+                   'VORBIS': 'float32',
+                   'VOX_ADPCM': 'int16'}
 
 class AudioFile(BaseSnd):
 
@@ -129,6 +161,7 @@ class AudioFile(BaseSnd):
 
     __repr__ = __str__
 
+
     @property
     def path(self):
         return self._path
@@ -138,7 +171,7 @@ class AudioFile(BaseSnd):
         return self._mode
 
     @property
-    def readdtype(self):
+    def defaultdtype(self):
         return self._dtype
 
     @property
@@ -168,7 +201,6 @@ class AudioFile(BaseSnd):
                 raise
             finally:
                 self._fileobj = None
-
 
     @contextmanager
     def open(self):
@@ -304,7 +336,7 @@ class AudioSnd(AudioFile, SndInfo):
             AudioFile.__init__(self, path=path,
                                setparamcallback=self._set_parameter)
         else:
-            AudioFile.__init__(self, path=sndinfopath.stem,
+            AudioFile.__init__(self, path=sndinfopath.parent / sndinfopath.stem,
                                fs=si['fs'], scalingfactor=si['scalingfactor'],
                                startdatetime=si['startdatetime'],
                                origintime=si['origintime'],
