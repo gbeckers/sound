@@ -6,9 +6,6 @@ for scientific use cases, but it may also be of interest to soundscape
 recordists, or anyone who wants to work efficiently with very long sounds,
 with very many sounds, or with metadata.
 
-What problem does it solve?
----------------------------
-
 There are various excellent tools for working with audio files in Python.
 However, audio files can be cumbersome to work with in scientific
 applications because they were not designed for this type of work in mind.
@@ -33,7 +30,7 @@ For more heavy-duty work, *Sound* works with
 designed for scientific use and supports very efficient random access
 reading/writing of disk-based numeric data. This way, you can efficiently work
 very large recordings, or zillions of recorded sound episodes which would
-otherwise be inefficiently stored in zillions of separate files. It also
+otherwise be inefficiently stored in separate files. It also
 ensures your sound data can easily be used in various scientific computing
 environments.
 

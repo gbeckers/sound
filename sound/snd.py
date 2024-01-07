@@ -66,12 +66,13 @@ class BaseSnd:
       
     """
 
-    def __init__(self, nframes, nchannels, fs, scalingfactor=None,
-                 encoding=None,  startdatetime='NaT', origintime=0.0, unit=None,
+    def __init__(self, nframes, nchannels, fs, framedtype=None, scalingfactor=None,
+                 encoding=None, startdatetime='NaT', origintime=0.0, unit=None,
                  metadata=None, setparamcallback=None):
 
         self._nframes = nframes
         self._nchannels = nchannels
+        self._framedtype = framedtype
         if not isinstance(fs, (int, float)):
             raise TypeError(f"`fs` can only be an int or float, not; {type(fs)}")
         self._fs = _check_fs(fs)
@@ -95,6 +96,11 @@ class BaseSnd:
     def nchannels(self):
         """Number of channels."""
         return self._nchannels
+
+    @property
+    def framedtype(self):
+        """NumPy dtype of the frames as returned by the `read_frames` method"""
+        return self._framedtype
 
     @property
     def fs(self):
@@ -552,11 +558,11 @@ class BaseSnd:
                       origintime=origintime, metadata=None, encoding=self.encoding)
             nread += window.shape[0]
 
-    # TODO fix add additional params like origintime etc
+    # FIXME normalization etc
     def to_audiofile(self, path, format=None, encoding=None, endian=None,
                      startframe=None, endframe=None, starttime=None, endtime=None,
-                     startdatetime=None, enddatetime=None, overwrite=False,
-                     channelindex=None):
+                     startdatetime=None, enddatetime=None, channelindex=None,
+                     accessmode='r', overwrite=False):
         """
         Save sound object to an audio file.
 
@@ -594,20 +600,24 @@ class BaseSnd:
                                                    startdatetime=startdatetime,
                                                    enddatetime=enddatetime)
         if encoding is None:
-            encoding = self.encoding
+            try:
+                encoding = self.encoding
+            except:
+                encoding = dtypetoencoding(self.framedtype)
         if format is None:
-            if isinstance(self, AudioFile):
-                format = self._fileformat
-            else:
+            try:
+                format = self.fileformat
+            except:
                 format = defaultaudioformat
         format = format.upper()
+        sf._format_int(format, encoding, endian)
         if format not in availableaudioformats:
             raise ValueError(f"'{format}' format not availabe (choose from: "
                              f"{availableaudioformats.keys()})")
         if encoding is None:
             if isinstance(self, AudioFile):
-                if self._fileformatsubtype in availableaudioencodings(format):
-                    encoding = self._fileformatsubtype
+                if self._audioencoding in availableaudioencodings(format):
+                    encoding = self._audioencoding
             else:
                 encoding = defaultaudioencoding[format]
         path = Path(path)
@@ -632,9 +642,18 @@ class BaseSnd:
                                             endframe=endframe,
                                             channelindex=channelindex):
                 f.write(window)
-        return AudioFile(path, startdatetime=startdatetime, origintime=origintime,
-                         metadata=self.metadata, fs=self.fs, unit=self.unit,
-                         scalingfactor=self.scalingfactor)
+            endian = f.endian
+        info = self._saveparams
+        info.update({'endiannes': endian,
+                     'fileformat': format,
+                     'encoding': encoding,
+                     'metadata': self.metadata,
+                     'sndtype': AudioFile._classid,
+                     'startdatetime': startdatetime,
+                     'origintime': origintime})
+        sndinfopath = Path(f'{path}{SndInfo._suffix}')
+        _create_sndinfo(sndinfopath, d=info, overwrite=overwrite)
+        return AudioFile(path, accessmode=accessmode)
 
     #FIXME wrap
     #@wraptimeparamsmethod
@@ -674,7 +693,7 @@ class BaseSnd:
                                endtime=endtime, startdatetime=startdatetime,
                                enddatetime=enddatetime, overwrite=overwrite,
                                channelindex=channelindex)
-        path = af.path.with_suffix(SndInfo._suffix)
+        path = af.audiofilepath.with_suffix(SndInfo._suffix)
         return af.as_audiosnd(accessmode=accessmode, overwrite=overwrite)
 
     # also share code with darr case
@@ -705,10 +724,10 @@ class BaseSnd:
             else:
                 ts = duration_string(nframes / self.fs)
             fname = f'chunk_{i:0>3}_{ts}'
-            af = s.to_audiofile(dd.path / fname, format=format,
+            af = s.to_audiofile(dd.audiofilepath / fname, format=format,
                                 encoding=subtype, endian=endian,
                                 overwrite=overwrite)
-            fnames.append(af.path.name)
+            fnames.append(af.audiofilepath.name)
             if i == 0:
                 s0 = s
             nframes += s.nframes
@@ -751,10 +770,10 @@ class BaseSnd:
             else:
                 ts = duration_string(nframes / self.fs)
             fname = f'chunk_{i:0>3}_{ts}'
-            af = s.to_darrsnd(dd.path/fname, dtype=dtype,
+            af = s.to_darrsnd(dd.audiofilepath / fname, dtype=dtype,
                               metadata=None,
                               overwrite=overwrite)
-            fnames.append(af.path.name)
+            fnames.append(af.audiofilepath.name)
             if i == 0:
                 s0 = s
             nframes += s.nframes
@@ -775,7 +794,6 @@ def dtypetoencoding(dtype):
                'int8': 'PCM_S8',
                'int16': 'PCM_16',
                'int32': 'PCM_32',
-               'int64': 'PCM_64',
                'float32': 'FLOAT',
                'float64': 'DOUBLE'}
     dtype = np.dtype(dtype)
@@ -805,11 +823,11 @@ class Snd(BaseSnd):
         Frames will be converted to this dtype if not None. Default: None, inferred from 
         `frames`.
     encoding: str
-        The audio encoding (if known) of the frames. This is different from `dtype`. 
-        Dtype determines how the frame array is numerically represented in RAM memory. 
+        The audio encoding (if known) of the frames. This is different from `framedtype`,  
+        which determines how the frame array is numerically represented in RAM memory. 
         The encoding, in contrast, provides information on the representation had before 
         they were converted to this. This may be relevant when reading and saving audio 
-        files. For example, the date may originate from a file in PCM_24 format, which has 
+        files. For example, the data may originate from a file in PCM_24 format, which has 
         24-bit integer encoding. This will be converted to an int32 numpy array because 
         24-bit numpy arrays do not exist. When saving (parts of) the data into an audio 
         file again, this can be safely done in PCM_24 instead of PCM_32 if it is known 
@@ -820,7 +838,6 @@ class Snd(BaseSnd):
             int8:    PCM_S8
             int16:   PCM_16
             int32:   PCM_32
-            int64:   PCM_64
             float32: FLOAT
             float64: DOUBLE
     
@@ -841,12 +858,12 @@ class Snd(BaseSnd):
         if dtype is None:
             dtype = frames.dtype.name
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
-                         dtype=dtype, scalingfactor=scalingfactor,
+                         framedtype=dtype, scalingfactor=scalingfactor,
                          startdatetime=startdatetime, origintime=origintime,
                          encoding=encoding, metadata=metadata, unit=unit)
 
     def __str__(self):
-        return f'{super().__str__()[:-1]}, {self.dtype}>'
+        return f'{super().__str__()[:-1]}, {self.framedtype}>'
 
     __repr__ = __str__
 

@@ -13,7 +13,8 @@ from ._version import get_versions
 __all__ = ['ChunkedSnd', 'audiodir_to_chunkedsnd']
 
 
-# Are there things shares between disk-based objects that justify a Subclass of BaseSnd?
+# Are there things shared between disk-based objects that justify a Subclass
+# of BaseSnd?
 
 class ChunkedSnd(BaseSnd, SndInfo):
     _classid = 'ChunkedSnd'

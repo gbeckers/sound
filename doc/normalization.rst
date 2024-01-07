@@ -9,28 +9,21 @@ SoundFile is to normalize integer-based formats to float64 in the range of
 intended use cases include scientific applications in which some of the side
 effects of this conversion may be unexpected and unwanted, such as
 unavoidable (small) errors when reading and then saving the exact
-same data in integer encodings (see
-`here <http://www.mega-nerd.com/libsndfile/FAQ.html#Q010>`__ why). Also,
-rather serious normalization bugs have been reported when reading the common
-FLAC format this way (e.g. see
-`here <https://github.com/bastibe/SoundFile/issues/265>`__)
+same data based on integer encodings (see
+`here <http://www.mega-nerd.com/libsndfile/FAQ.html#Q010>`__ why).
 
 As a consequence, and unlike other libraries, *Sound* does not automatically
 normalize values of integer based formats to floats between -1.0 and 1.0
-when reading them. (You *can* still read normalized values though when you
-specify that you want this.) The reason why *Sound*'s default is to not
-normalize is that this process is not lossless if you want to save the data
-later, even if it is in the exact same encoding and the data has not
-undergone further processing (see
-`here <http://www.mega-nerd.com/libsndfile/FAQ.html#Q010>`__ why). The
-difference is negligible for audio applications, but being a scientific
-library the default in *Sound*  is to avoid potentially lossy normalization
+when reading them, although you *can* still read normalized values though when
+you specify that you want this.) Although small errors because of encoding
+conversion may be negligible for audio applications, *Sound* is focused on
+scientific applications and avoids potentially lossy normalization
 no matter how small. So, if you read a PCM_16 or PCM_32 WAV file, you receive
-the integer numbers that as they are stored in the file. If you save them
+the integer numbers as they are encoded in the file. If you save them
 again without transformation in an audio file *with the same type of encoding
-or a higher resolution one*, the result will be lossless. This is useful,
-for example, when reading shorter episodes of interest in a long recording and
-saving them.
+or a higher resolution one*, the result will be lossless. This behavior is
+useful, for example, when exporting shorter episodes of interest from a long
+recording. The waveform will be identical.
 
 It is good to note though that when reading audio data in a given integer
 format (e.g. PCM_16) and then writing the exact same audio data in a higher
@@ -43,9 +36,9 @@ transformations in *Sound* (which are done by the underlying *SoundFile*
 library) are lossless as long as you never convert to an encoding with fewer
 bits than your source data.
 
-An example may help to understand this. Say I recorded a sound in PCM_16
+An example may help. Say I recorded a sound in PCM_16
 encoding in a WAV file, which may contain values between the defined minimum
-and maximum of -32768 and 32767, respectively. I will simulate this
+and maximum of -32768 and 32767, respectively. Let's simulate this
 recording by generating 10 random values between these limits and create a
 Snd object based on them
 
@@ -67,7 +60,8 @@ Snd object based on them
            [-28285],
            [   -89]], dtype=int16)
 
-Next I save the sound in a WAV audiofile with PCM_16 encoding.
+Next I save the sound in a WAV audiofile with PCM_16 encoding, and read the
+frames again:
 
 .. code:: python
 
@@ -122,7 +116,7 @@ right, undoing this:
            [   -89]], dtype=int32)
 
 There is no real reason to 'undo' the scaling in practice, as it has the exact
-same information, but it is just done her to show what is going on.
+same information, but it is just done here to show what is going on.
 
 NumPy has no 24-bit int dtypes, so if you read PCM_24 encoding, the results
 will be in an int32 array, with automatic scaling to the range of PCM_32.
