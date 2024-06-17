@@ -29,7 +29,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/x-rst",
     python_requires='>=3.6',
-    install_requires=['soundfile', 'darr'],  # numpy is a dependency of darr already
+    install_requires=['soundfile>=0.12', 'darr>=0.5'],  # numpy is a dependency of darr already
     data_files = [("", ["LICENSE"])],
     classifiers=[
         "Programming Language :: Python :: 3",

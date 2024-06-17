@@ -11,6 +11,66 @@ from ._version import get_versions
 
 __all__ = ['Snd']
 
+audiofloat_to_PCM_factor = {
+    'PCM_32': 0x7FFFFFFF,     # 2147483647
+    'PCM_24': 0x7FFFFF,     # 8388607
+    'PCM_16': 0x7FFF,     # 32767
+    'PCM_S8': 0x7F,     # 127
+    'PCM_U8': 0xFF,     # 255
+}
+
+PCM_to_audiofloat_factor = {
+    'PCM_32': 1 / 0x80000000, # 1 / 2147483648
+    'PCM_24': 1 / 0x800000, # 1 / 8388608
+    'PCM_16': 1 / 0x8000, # 1 / 32768
+    'PCM_S8': 1 / 0x80, # 1 / 128
+    'PCM_U8': 1 / 0xFF, # 1 / 255
+}
+
+
+int_to_audiofloat_factor = {
+    'int32': 1 / 0x80000000, # 1 / 2147483648
+    'int16': 1 / 0x8000, # 1 / 32767
+}
+
+def _dtypetoencoding(dtype):
+    mapping = {'uint8': 'PCM_U8',
+               'int8': 'PCM_S8',
+               'int16': 'PCM_16',
+               'int32': 'PCM_32',
+               'float32': 'FLOAT',
+               'float64': 'DOUBLE'}
+    dtype = np.dtype(dtype)
+    if not dtype.name in mapping:
+        raise TypeError(f"dtype '{dtype.name}' is not supported")
+    return mapping[dtype.name]
+
+def _cast_frames(frames, dtype):
+    fromdtype = frames.dtype.name
+    todtype = np.dtype(dtype).name
+    for dtype in (fromdtype, todtype):
+        if dtype not in ('int16', 'int32', 'float32', 'float64'):
+            raise TypeError(f"dtype '{dtype}' is not supported")
+    if fromdtype == todtype:
+        return frames
+    elif fromdtype in ('float64','float32'):
+        if todtype in ('float64', 'float32'):
+            frames = frames.astype(todtype)
+        else: # todtype in ('int16', 'int32'):
+            frames *= audiofloat_to_PCM_factor[_dtypetoencoding(todtype)]
+            frames = frames.astype(todtype)
+    else: # fromdtype in ('int16', 'int32'):
+        if todtype in ('float64', 'float32'):
+            frames = frames.astype(todtype)
+            frames *= int_to_audiofloat_factor[fromdtype]
+        elif fromdtype == 'int16': # todtype == 'int32'
+            frames = frames.astype(todtype)
+            frames *= 2**16
+        else: # fromdtype == 'int32'
+            frames //= 2 ** 16
+            frames = frames.astype(todtype)
+    return frames
+
 def _check_frames(frames):
     requiredattrs = ('dtype', 'shape')
     if not all(hasattr(frames, attr) for attr in requiredattrs):
@@ -36,11 +96,6 @@ def _check_metadata(metadata):
     return metadata
 
 class BaseSnd:
-    _timeaxis = 0
-    _channelaxis = 1
-    _classid = 'BaseSnd'
-    _classdescr = 'represents a continuous sound'
-    _version = get_versions()['version']
 
     """A base class for continuous sounds.
     
@@ -50,35 +105,50 @@ class BaseSnd:
     Parameters
     ----------
     frames: array-like
-      Time on first axis, channel on second axis. Needs to support indexing, to have `dtype`and `shape` attributes,
-      and to implement an `open` method.
+      Time on first axis, channel on second axis. Needs to support indexing, to 
+      have `dtype`and `shape` attributes, and to implement an `open` method.
     fs: {int, float}
       Sampling rate in Hz.
     dtype: numpy dtype
-        This is the dtype of the raw frame values when they are read internally.
+        This is the dtype of the sound pressure values as return when read 
+        from object.
+    sampledtype: numpy dtype
+        This is the dtype of the sample values when read without normalization. 
+        Note that dtype after normalization is always either float32 or float64.
     startdatetime: str
-      The date and time when the sound started to occur. The most basic way to create a datetime is from strings in 
-      ISO 8601 date or datetime format. The unit for internal storage is automatically selected from the form of the 
-      string, and can be either a date unit or a time unit. The date units are years (‘Y’), months (‘M’), weeks (‘W’), 
-      and days (‘D’), while the time units are hours (‘h’), minutes (‘m’), seconds (‘s’), milliseconds (‘ms’), and 
-      some additional SI-prefix seconds-based units. This parameter also accepts the string “NAT”, in any combination 
-      of lowercase/uppercase letters, for a “Not A Time” value.
+      The date and time when the sound started to occur. The most basic way to 
+      create a datetime is from strings in ISO 8601 date or datetime format. 
+      The unit for internal storage is automatically selected from the form of 
+      the string, and can be either a date unit or a time unit. The date units 
+      are years (‘Y’), months (‘M’), weeks (‘W’), and days (‘D’), while the 
+      time units are hours (‘h’), minutes (‘m’), seconds (‘s’), milliseconds 
+      (‘ms’), and some additional SI-prefix seconds-based units. This parameter 
+      also accepts the string “NAT”, in any combination of lowercase/uppercase 
+      letters, for a “Not A Time” value.
+    
       
     """
 
-    def __init__(self, nframes, nchannels, fs, framedtype=None, scalingfactor=None,
-                 encoding=None, startdatetime='NaT', origintime=0.0, unit=None,
-                 metadata=None, setparamcallback=None):
+    _timeaxis = 0
+    _channelaxis = 1
+    _classid = 'BaseSnd'
+    _classdescr = 'represents a continuous sound'
+    _version = get_versions()['version']
+    _dtypes = ('float32', 'float64')
+    _defaultdtype = 'float64'
+
+    def __init__(self, nframes, nchannels, fs, dtype='float64',
+                 sampledtype=None, scalingfactor=None, startdatetime='NaT',
+                 origintime=0.0, unit=None, metadata=None,
+                 setparamcallback=None):
 
         self._nframes = nframes
         self._nchannels = nchannels
-        self._framedtype = framedtype
+        self._sampledtype = sampledtype
         if not isinstance(fs, (int, float)):
             raise TypeError(f"`fs` can only be an int or float, not; {type(fs)}")
         self._fs = _check_fs(fs)
-        # self._dtype = dtype
         self._scalingfactor = _check_scalingfactor (scalingfactor)
-        self._encoding = encoding
         self._startdatetime = _check_startdatetime(startdatetime)
         self._origintime = _check_origintime(origintime)
         self._unit = _check_unit(unit)
@@ -98,9 +168,9 @@ class BaseSnd:
         return self._nchannels
 
     @property
-    def framedtype(self):
-        """NumPy dtype of the frames as returned by the `read_frames` method"""
-        return self._framedtype
+    def sampledtype(self):
+        """NumPy dtype of the samples as they are stored in memory"""
+        return self._sampledtype
 
     @property
     def fs(self):
@@ -119,13 +189,9 @@ class BaseSnd:
 
     @property
     def scalingfactor(self):
-        """Multiplication factor to apply to frames when read from source."""
+        """Multiplication factor to apply to frames when read from source.
+        Only applied to samples in floating point encoding."""
         return self._scalingfactor
-
-    @property
-    def encoding(self):
-        """The encoding type from which the frames have been read."""
-        return self._encoding
 
     @property
     def duration(self):
@@ -170,11 +236,16 @@ class BaseSnd:
         want to change metadata."""
         return self._metadata.copy()
 
+    def _check_dtype(self, dtype):
+        dtype = np.dtype(dtype).name
+        if not dtype in self._dtypes:
+            raise TypeError(f"`dtype` must be one of {self._dtypes}")
+        return dtype
+
     def set_fs(self, fs):
-        fs = _check_fs(fs)
+        self._fs = _check_fs(fs)
         if self._setparamcallback is not None:
             self._setparamcallback('fs', fs, self._saveparams)
-        self._fs = fs
 
     def set_metadata(self, metadata):
         metadata = _check_metadata(metadata)
@@ -274,7 +345,7 @@ class BaseSnd:
         disk-persistent"""
 
         return {'duration': duration_string(self.duration),
-                'encoding': self.encoding,
+                'framedtype': self.sampledtype,
                 'fs': self.fs,
                 'metadata': dict(self.metadata),
                 'nchannels': self.nchannels,
@@ -453,8 +524,8 @@ class BaseSnd:
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, dtype='float64',
-                    normalizeaudio=False):
+                    channelindex=None, out=None, dtype=None,
+                    normalize=None):
         pass
 
     @contextmanager
@@ -467,7 +538,7 @@ class BaseSnd:
                         starttime=None, endtime=None, startdatetime=None,
                         enddatetime=None, channelindex=None,
                         firstblocklen=None,
-                        dtype=None, normalizeaudio=False):
+                        dtype=None, normalize=None):
         with self.open():
             if firstblocklen is not None:
                 if firstblocklen > endframe:
@@ -488,16 +559,15 @@ class BaseSnd:
                 yield self.read_frames(startframe=windowstart,
                                        endframe=windowend,
                                        channelindex=channelindex,
-                                       dtype=dtype,
-                                       normalizeaudio=normalizeaudio)
+                                       dtype=dtype)
 
     @wraptimeparamsmethod
     def read(self, startframe=None, endframe=None, starttime=None,
              endtime=None, startdatetime=None, enddatetime=None,
-             channelindex=None, dtype=None, normalizeaudio=False):
+             channelindex=None, dtype=None):
         frames = self.read_frames(startframe=startframe, endframe=endframe,
-                                  channelindex=channelindex, dtype=dtype,
-                                  normalizeaudio=normalizeaudio)
+                                  channelindex=channelindex,
+                                  dtype=dtype)
         startdatetime = self.frameindex_to_datetime(startframe,
                                                     where='start')
         origintime = self.origintime - startframe / float(self.fs)
@@ -508,8 +578,7 @@ class BaseSnd:
         s = Snd(frames=frames, fs=self._fs,
                 startdatetime=startdatetime,
                 origintime=origintime,
-                metadata=metadata,
-                encoding=self.encoding)
+                metadata=metadata)
         s.starttime = startframe / float(self._fs)
         return s
 
@@ -517,8 +586,9 @@ class BaseSnd:
     def iterread(self, startframe=None, endframe=None, starttime=None, endtime=None,
                  startdatetime=None, enddatetime=None, blocklen=None,
                  stepsize=None, include_remainder=True, channelindex=None,
-                 splitonclockhour=False, copy=False, dtype=None,
-                 normalizeaudio=False):
+                 splitonclockhour=False, copy=False,
+                 dtype=None,
+                 normalize=False):
         if splitonclockhour:
             hour = int(round(self.fs * 60 * 60))
             if blocklen is None:
@@ -544,7 +614,7 @@ class BaseSnd:
                                            channelindex=channelindex,
                                            firstblocklen=firstblocklen,
                                            dtype=dtype,
-                                           normalizeaudio=normalizeaudio):
+                                           normalize=normalize):
             if copy:
                 window = window.copy()
             elapsedsec = (nread + startframe) * self.dt
@@ -555,7 +625,7 @@ class BaseSnd:
                                 np.timedelta64(int(elapsedsec * 1e9), 'ns')
             origintime = self.origintime - elapsedsec
             yield Snd(frames=window, fs=self._fs, startdatetime=startdatetime,
-                      origintime=origintime, metadata=None, encoding=self.encoding)
+                      origintime=origintime, metadata=None, unit=self.unit)
             nread += window.shape[0]
 
     # FIXME normalization etc
@@ -603,7 +673,7 @@ class BaseSnd:
             try:
                 encoding = self.encoding
             except:
-                encoding = dtypetoencoding(self.framedtype)
+                encoding = _dtypetoencoding(self.sampledtype)
         if format is None:
             try:
                 format = self.fileformat
@@ -789,26 +859,10 @@ class BaseSnd:
             dd.metadata.update(self.metadata)
         return ChunkedSnd(path)
 
-def dtypetoencoding(dtype):
-    mapping = {'uint8': 'PCM_U8',
-               'int8': 'PCM_S8',
-               'int16': 'PCM_16',
-               'int32': 'PCM_32',
-               'float32': 'FLOAT',
-               'float64': 'DOUBLE'}
-    dtype = np.dtype(dtype)
-    if not dtype.name in mapping:
-        raise TypeError(f"dtype '{dtype.name}' is not supported")
-    return mapping[dtype.name]
 
-
-# FIXME rename this to RAMSnd?
 class Snd(BaseSnd):
 
-    _classid = 'Snd'
-    _classdescr = 'a sound in RAM memory'
-
-    """A sound in RAM memory.
+    """A sound living in RAM memory.
     
     Parameters
     ----------
@@ -822,76 +876,55 @@ class Snd(BaseSnd):
     dtype: numpy dtype {None | unint8 | int8 | int16 | int32 | int64 | float32 | float64 }
         Frames will be converted to this dtype if not None. Default: None, inferred from 
         `frames`.
-    encoding: str
-        The audio encoding (if known) of the frames. This is different from `framedtype`,  
-        which determines how the frame array is numerically represented in RAM memory. 
-        The encoding, in contrast, provides information on the representation had before 
-        they were converted to this. This may be relevant when reading and saving audio 
-        files. For example, the data may originate from a file in PCM_24 format, which has 
-        24-bit integer encoding. This will be converted to an int32 numpy array because 
-        24-bit numpy arrays do not exist. When saving (parts of) the data into an audio 
-        file again, this can be safely done in PCM_24 instead of PCM_32 if it is known 
-        that that was the original format. If it is not known, a suitable encoding will be 
-        inferred from the dtype of the frames array: 
-        
-            uint8:  PCM_U8
-            int8:    PCM_S8
-            int16:   PCM_16
-            int32:   PCM_32
-            float32: FLOAT
-            float64: DOUBLE
+    
+    A Snd can be based on integer or float data types. If it is integer
     
     """
 
-    def __init__(self, frames, fs, startdatetime='NaT',
-                 origintime=0.0, metadata=None, dtype=None,
-                 scalingfactor=None, encoding=None, unit=None):
-        frames = np.asarray(frames, dtype=dtype)
-        if encoding is None:
-            encoding = dtypetoencoding(frames.dtype)
+    _classid = 'Snd'
+    _classdescr = 'a sound in RAM memory'
+    _dtypes = ('float32', 'float64')
+    _defaultdtype = 'float64'
+
+    def __init__(self, frames, fs, startdatetime='NaT', origintime=0.0,
+                 metadata=None, scalingfactor=None, unit=None):
         if frames.ndim == 1:
             frames = frames.reshape(-1, 1)
         elif frames.ndim > 2:
             raise ValueError(f"`frames` has to have 2 dimensions (now: {frames.ndim})")
         nframes, nchannels = frames.shape
         self._frames = frames
-        if dtype is None:
-            dtype = frames.dtype.name
+        dtype = frames.dtype.name
+
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
-                         framedtype=dtype, scalingfactor=scalingfactor,
+                         sampledtype=dtype,
+                         scalingfactor=scalingfactor,
                          startdatetime=startdatetime, origintime=origintime,
-                         encoding=encoding, metadata=metadata, unit=unit)
+                         metadata=metadata, unit=unit)
+
+    def _check_dtype(self, dtype):
+        dtype = np.dtype(dtype).name
+        validdtypes = ('float32', 'float64', 'int16', 'int32')
+        if dtype in validdtypes:
+            return dtype
+        else:
+            raise TypeError(f"`dtype` parameter must be one of {validdtypes}")
 
     def __str__(self):
-        return f'{super().__str__()[:-1]}, {self.framedtype}>'
+        return f'{super().__str__()[:-1]}, {self.sampledtype}>'
 
     __repr__ = __str__
 
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, dtype=None, order='K', ndmin=2,
-                    normalizeaudio=False):
+                    channelindex=None, dtype=None,
+                    order='K', ndmin=2):
         if channelindex is None:
             channelindex = slice(None,None,None)
         frames = self._frames[slice(startframe, endframe), channelindex]
-        frames = np.array(frames, copy=True, dtype=dtype, order=order,
+        frames = np.array(frames, copy=True, order=order,
                           ndmin=ndmin)
-        if normalizeaudio:  # 'int32', 'int16'
-            if frames.dtype == np.int32:
-                frames *= 1 / 0x80000000
-            elif frames.dtype == np.int16:
-                frames *= 1 / 0x8000
-            else:
-                raise TypeError(f"'normalizeaudio' parameter is "
-                                f"True, but can only applied to int16 and "
-                                f"int32 data; received {frames.dtype} "
-                                f"data.")
-        if self.scalingfactor is not None:
-            frames *= self.scalingfactor
-
-        return frames
-
-
+        return _cast_frames(frames=frames, dtype=dtype)
 
 

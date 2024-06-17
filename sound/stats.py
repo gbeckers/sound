@@ -40,7 +40,7 @@ def rms(s, startframe=None, endframe=None, starttime=None, endtime=None,
     for ar in s.iterread_frames(blocklen=blocklen, startframe=startframe, endframe=endframe, starttime=starttime,
                                 endtime=endtime, startdatetime=startdatetime, enddatetime=enddatetime,
                                 channelindex=channelindex, include_remainder=True):
-        if not np.issubdtype(dtype, ar._framesdtype):
+        if not np.issubdtype(dtype, ar._sampledtype):
             ar = ar.astype(dtype)
         sqsum += np.sum(ar ** 2.0, axis=s._timeaxis)
         nframes += ar.shape[0]
@@ -56,7 +56,7 @@ def mean(s, startframe=None, endframe=None, starttime=None, endtime=None,
     for ar in s.iterread_frames(blocklen=blocklen, startframe=startframe, endframe=endframe, starttime=starttime,
                                 endtime=endtime, startdatetime=startdatetime, enddatetime=enddatetime,
                                 channelindex=channelindex, include_remainder=True):
-        if not np.issubdtype(dtype, ar._framesdtype):
+        if not np.issubdtype(dtype, ar._sampledtype):
             ar = ar.astype(dtype)
         tsum += np.sum(ar, axis=s._timeaxis)
         nframes += ar.shape[0]

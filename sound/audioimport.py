@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from pathlib import Path
-from .audiofile import AudioFile, AudioSnd, defaultaudioencoding
+from .audiofile import AudioFile, defaultaudioencoding
 from .darrsnd import DarrSnd
 
 import fnmatch

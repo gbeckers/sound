@@ -3,12 +3,15 @@ import soundfile as sf
 from contextlib import contextmanager
 from pathlib import Path
 from .sndinfo import SndInfo, _create_sndinfo
-from .snd import BaseSnd
+from .snd import BaseSnd, _cast_frames, _dtypetoencoding
 from .utils import wraptimeparamsmethod
 
 __all__ = ["AudioSnd", "availableaudioformats", "availableaudioencodings"]
 
 defaultaudioformat = 'WAV'
+# Unlike libsnd and soundfile, we do not directly support RAW as audio
+# file. People should convert RAW to a DarrSnd
+# TODO: create conversion function RAW to DarrSnd
 defaultaudioencoding = {'AIFF': 'PCM_24',
                         'AU': 'PCM_24',
                         'AVR': 'PCM_16',
@@ -18,12 +21,12 @@ defaultaudioencoding = {'AIFF': 'PCM_24',
                         'IRCAM': 'FLOAT',
                         'MAT4': 'FLOAT',
                         'MAT5': 'FLOAT',
+                        'MP3': 'MPEG_LAYER_III',
                         'MPC2K': 'PCM_16',
                         'NIST': 'PCM_24',
                         'OGG': 'VORBIS',
                         'PAF': 'PCM_24',
                         'PVF': 'PCM_32',
-                        'RAW': 'FLOAT',
                         'RF64': 'PCM24',
                         'SD2': 'PCM_24',
                         'SDS': 'PCM_24',
@@ -35,21 +38,7 @@ defaultaudioencoding = {'AIFF': 'PCM_24',
                         'WVE': 'ALAW',
                         'XI': 'DPCM_16'}
 
-audiofloat_to_PCM_factor = {
-    'PCM_32': 0x7FFFFFFF,     # 2147483647
-    'PCM_24': 0x7FFFFF,     # 8388607
-    'PCM_16': 0x7FFF,     # 32767
-    'PCM_S8': 0x7F,     # 127
-    'PCM_U8': 0xFF,     # 255
-}
 
-PCM_32_to_audiofloat_factor = {
-    'PCM_32': 1 / 0x80000000, # 1 / 2147483648
-    'PCM_24': 1 / 0x800000, # 1 / 8388607
-    'PCM_16': 1 / 0x8000, # 1 / 32767
-    'PCM_S8': 1 / 0x80, # 1 / 127
-    'PCM_U8': 1 / 0xFF, # 1 / 255
-}
 
 _sfformats = sf.available_formats()
 _sfsubtypes = sf.available_subtypes()
@@ -59,8 +48,7 @@ availableaudioformats = {key: _sfformats[key] for key in _audioformatkeys}
 availableaudioencodings = {key: _sfsubtypes[key] for key in _audioencodingkeys}
 
 # The choices for default dtypes for the different encodings is based on how
-# the data is read in libsndfile most directly. I figured this out by looking
-# at libsndfile source code.
+# the data is read in libsndfile.
 #     ALAC: Apple Lossless Audio Codec, libsndfile uses int32
 #     ALAW: A-Law telephony companding algorithm, libsndfile uses int16
 #     DPCM: Differential pulse-code modulation, libsndfile uses ints
@@ -86,9 +74,17 @@ encodingtodtype = {'ALAC_16': 'int16',
                    'FLOAT': 'float32',
                    'G721_32': 'int16',
                    'G723_24': 'int16',
+                   'G723_40': 'int16',
                    'GSM610': 'int16',
                    'IMA_ADPCM': 'int16',
+                   'MPEG_LAYER_I': 'float32',
+                   'MPEG_LAYER_II': 'float32',
+                   'MPEG_LAYER_III': 'float32',
                    'MS_ADPCM': 'int16',
+                   'NMS_ADPCM_16': 'int16',
+                   'NMS_ADPCM_24': 'int16',
+                   'NMS_ADPCM_32': 'int16',
+                   'OPUS': 'float32',
                    'PCM_S8': 'int16',
                    'PCM_U8': 'int16',
                    'PCM_16': 'int16',
@@ -102,35 +98,29 @@ class AudioFile(BaseSnd, SndInfo):
 
     """Sound data stored in an audio file.
 
-    Use this class to access data from audio files. Note that although you
-    can provide additional info on the sound at instantiation, such as
-    `startdatetime` and `metadata, or override the sampling rate, this info is
-    not persistent (i.e. it is not saved on disk). If you want persistency
-    then convert the AudioFile to an AudioFileSnd by using the
-    `as_audiosnd` method. An AudioSnd is based on the same audiofile,
-    but in addition saves metadata and other information in separate
-    text-based files.
+    Use this class to access data from audio files.
+
+    And audio file may have a json-based sidecar file, with the extension
+    '.snd', that contains additional metadata, and/or metadata that overrides
+    metadata stored in the audio file.
 
     Parameters
     ----------
     path: str or pathlib.Path
-    fs
-    startdatetime
-    origintime
-    metadata
-    accessmode
-    scalingfactor
-    unit
-
+    accessmode: 'r' or 'r+'
+        determines if data in metadata sidecar file is writable or not
 
     """
 
     _classid = 'AudioFile'
-    _classdescr = 'Sound in audio file plus optionally metadata in json file'
+    _classdescr = ('Sound in audio file potentially with metadata in sidecar '
+                   'file')
     _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
                        'startdatetime', 'unit')
+    _dtypes = ('float32', 'float64')
+    _defaultdtype = 'float64'
 
-    def __init__(self, path, accessmode='r'):
+    def __init__(self, path, accessmode='r+'):
         audiofilepath, sndinfopath = self._check_path(path)
         self._audiofilepath = audiofilepath
         self._mode = accessmode
@@ -140,22 +130,21 @@ class AudioFile(BaseSnd, SndInfo):
             fs = f.samplerate
             self._audiofileformat = f.format
             self._audioencoding = f.subtype
-            self._framesdtype = encodingtodtype.get(f.subtype, 'float64') # if we do not know, we just play safe
             self._endianness = f.endian
         SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
                          settableparams=self._settableparams)
         si = self._sndinfo._read()
-        kwargs = {sp: si.get(sp, None) for sp in self._settableparams}
+        kwargs = {sp: si[sp] for sp in self._settableparams if sp in si}
         if 'fs' in kwargs:
-            fs = kwargs['fs']
-            del kwargs['fs']
+            fs = kwargs.pop('fs')
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
+                         sampledtype=self._defaultdtype,
                          setparamcallback=self._set_parameter, **kwargs)
         self._fileobj = None
 
     def __str__(self):
         return f'{super().__str__()[:-1]}, {self.fileformat} ' \
-               f'{self.fileformatsubtype}>'
+               f'{self.fileformatsubtype}, {self.sampledtype}>'
 
     __repr__ = __str__
 
@@ -168,13 +157,13 @@ class AudioFile(BaseSnd, SndInfo):
         return self._mode
 
     @property
-    def framesdtype(self):
-        """numpy dtype of frames that the `read_frames` method returns"""
-        return self._framesdtype
-
-    @property
     def fileformat(self):
         return self._audiofileformat
+
+    @property
+    def audioencoding(self):
+        """Type of sample value encoding in audio file."""
+        return self._audioencoding
 
     @property
     def fileformatsubtype(self):
@@ -183,6 +172,7 @@ class AudioFile(BaseSnd, SndInfo):
     @property
     def endianness(self):
         return self._endianness
+
 
     def _check_path(self, path):
         path = Path(path)
@@ -227,14 +217,10 @@ class AudioFile(BaseSnd, SndInfo):
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, out=None,
-                    normalizeaudio=False):
+                    channelindex=None, out=None, dtype='float64'):
         """Read audio frames (timesamples, channels) from file.
 
-        A frames is a time sample that may be multichannel. The dtype cannot be chosen,
-        and will be the closest compatible to the encoding type. Encodings based on integer
-        numbers (e.g. PCM_16) will return int16 or int32 types (depending on bit depth
-        of encoding), FLOAT encoding float32 and DOUBLE float64.
+        A frames is a time sample that may be multichannel.
 
         Parameters
         ----------
@@ -246,14 +232,18 @@ class AudioFile(BaseSnd, SndInfo):
         enddatetime
         channelindex
         out
-        normalizeaudio: bool, default: False
-            Determines whether or not integer audio encodings such as PCM_16 should be normalized
+        inttofloat: bool, default: False
+            Determines if integer audio encodings such as PCM_16 should be normalized
 
         Returns
         -------
 
         """
+        # for normalization we read as float64 so that we do not need to
+        # convert later
 
+
+        sampledtype = self._check_dtype(dtype)
         with self._openfile() as af:
             if startframe != af.tell():
                 try:
@@ -264,98 +254,26 @@ class AudioFile(BaseSnd, SndInfo):
                           f'which should have {self.nframes} frames.')
                     raise
             try:
-                frames = af.read(endframe - startframe, dtype=self._framesdtype,
+                frames = af.read(endframe - startframe, dtype=sampledtype,
                                  always_2d=True, out=out)
             except:
-                # TODO make a proper error
+                # TODO create a proper error
                 print(f'Unexpected error when reading {endframe-startframe} frames, '
                       f'starting from frame {startframe} in {self.audiofilepath}, which should '
                       f'have {self.nframes} frames.')
                 raise
+        if channelindex is not None:
+            frames = frames[:, channelindex]
+        if self.scalingfactor is not None:
+            frames *= self.scalingfactor
+        return frames
 
-            if channelindex is not None:
-                frames = frames[:,channelindex]
-            if normalizeaudio: # 'int32', 'int16'
-                if frames.dtype == np.int32:
-                    normfactor = 0x80000000
-                elif frames.dtype == np.int16:
-                    normfactor = 0x8000
-                else:
-                    raise TypeError(f"'normalizeaudio' parameter is "
-                                    f"True, but can only be applied to int16 and "
-                                    f"int32 data; received {frames.dtype} "
-                                    f"data.")
-                frames = frames.astype('float64')
-                frames /= normfactor
-            if self.scalingfactor is not None:
-                frames = frames * self.scalingfactor
-            return frames
 
     def info(self, verbose=False):
         d = super().info()
         d['fileformat'] = self.fileformat
         d['audiofilepath'] = str(self.audiofilepath)
-        return {k: d[k] for k in sorted(d.keys())}
-
-    def as_audiosnd(self, accessmode='r', overwrite=False):
-        """Convert an AudioFile to an AudioSnd
-
-        Frama data will be based on the same underlying audiofile,
-        but additional info will be saved separately. The advantage of a
-        AudioSnd over an AudioFile is a.o. the ability to use metadata that
-        is stored in a separate json text file and the ability to use
-        non-integer sampling rates, a scaling factor, an non-default dtype,
-        etc, in a persistent way.
-
-        """
-        if self.metadata is None:
-            metadata = {}
-        else:
-            metadata = self.metadata
-        audiofilepath = self.audiofilepath
-        sndinfopath = Path(f'{audiofilepath}{SndInfo._suffix}')
-        d = self._saveparams  # standard params that need saving
-        d.update({'endiannes': self.endianness,
-                  'fileformat': self.fileformat,
-                  'metadata': metadata,
-                  'sndtype': AudioSnd._classid,
-                  })
-        _create_sndinfo(sndinfopath, d=d, overwrite=overwrite)
-        return AudioSnd(sndinfopath, accessmode=accessmode)
-
-
-class AudioSnd(AudioFile, SndInfo):
-
-    _classid = 'AudioSnd'
-    _classdescr = 'Sound in audio file plus additional data in json file'
-    _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
-                      'startdatetime', 'unit')
-
-    def __init__(self, path, accessmode='r'):
-        path = Path(path)
-        if path.suffix.upper()[1:] in availableaudioformats: # we received audio file, not info file
-            sndinfopath = Path(f'{path}{SndInfo._suffix}')
-        elif path.suffix in (SndInfo._suffix, SndInfo._suffix.upper()):
-            sndinfopath = path
-        else:
-            raise IOError(f"file {path} does not exist")
-        SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
-                         settableparams=self._settableparams)
-        si = self._sndinfo._read()
-        if si == {}: # there is no sndinfo file, we
-            AudioFile.__init__(self, path=path,
-                               setparamcallback=self._set_parameter)
-        else:
-            AudioFile.__init__(self, path=sndinfopath.parent / sndinfopath.stem,
-                               fs=si['fs'], scalingfactor=si['scalingfactor'],
-                               startdatetime=si['startdatetime'],
-                               origintime=si['origintime'],
-                               metadata=si['metadata'], accessmode=accessmode,
-                               setparamcallback=self._set_parameter)
-
-    def info(self, verbose=False):
-        d = super().info()
-        d['sndinfofilepath'] = str(self._sndinfo.audiofilepath)
+        d['audiofileencoding'] = str(self._audioencoding)
         return {k: d[k] for k in sorted(d.keys())}
 
 

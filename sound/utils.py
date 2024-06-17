@@ -68,7 +68,6 @@ import math
 import sys
 import numpy as np
 from numbers import Number
-from collections import Set, Mapping, deque
 
 def isgenerator(iterable):
     return hasattr(iterable, '__iter__') and not hasattr(iterable, '__len__')

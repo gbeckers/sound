@@ -18,21 +18,20 @@ absolute sound levels or absolute time, or various types of metadata. These
 things do not matter when playing music or speech on an audio device, but
 they can matter very much in scientific work and other applications.
 
-*Sound* is intended to solve such problems.
+*Sound* helps to address such problems.
 
 In its simplest use case, *Sound* works with (collections of) normal audio
 files. This ensures hardware/software compatibility with the audio world.
-However it improves their usefulness by organizing important metadata in
-separate text-based (JSON) files.
+However it improves their usefulness by organizing metadata in separate
+text-based (JSON) files.
 
 For more heavy-duty work, *Sound* works with
 `Darr <https://darr.readthedocs.io/en/latest>`__-based data, which is a format
 designed for scientific use and supports very efficient random access
-reading/writing of disk-based numeric data. This way, you can efficiently work
+reading/writing of disk-based numeric data. This allows for working
 very large recordings, or zillions of recorded sound episodes which would
 otherwise be inefficiently stored in separate files. It also
-ensures your sound data can easily be used in various scientific computing
-environments.
+ensures sound data can easily be read in scientific computing environments.
 
 Status
 ------

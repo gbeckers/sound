@@ -1,0 +1,2 @@
+soundfile >= 0.12
+darr >= 0.5.3

@@ -2,7 +2,7 @@ import sys
 from .darrsnd import DarrSnd, SndInfo
 from .audioimport import list_audiofiles
 from ._version import get_versions
-from .audiofile import AudioSnd, AudioFile
+from .audiofile import AudioFile
 from .darrsnd import DarrSnd
 from .chunkedsnd import ChunkedSnd
 

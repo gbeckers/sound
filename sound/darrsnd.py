@@ -72,11 +72,11 @@ class DarrSnd(BaseSnd, SndInfo):
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
                     channelindex=None, dtype=None, order='K', ndmin=2,
-                    normalizeaudio=False):
+                    normalize=False):
         if channelindex is None:
             channelindex = slice(None, None, None)
         frames = self._frames[slice(startframe, endframe), channelindex]
-        if normalizeaudio:  # 'int32', 'int16'
+        if normalize:  # 'int32', 'int16'
             if frames.dtype == np.int32:
                 frames *= 1 / 0x80000000
             elif frames.dtype == np.int16:
