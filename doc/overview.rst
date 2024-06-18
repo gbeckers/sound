@@ -32,33 +32,28 @@ tool-specific formats.
 
 Main Object Types in the Sound library
 --------------------------------------
-**AudioFile** Used to read data from regular audio files.
-
-**AudioSnd**: A continuous sound, with data stored on disk in a regular
-audio file and a separate text-based metadata file. The metadata file allows
-for storing standard information about the sound (e.g. recording date and time,
-place) as well as any extra user information. This metadata has priority over
-potential metadata in the audiofile itself, which can be handy, for example
-when specifying non-integer sampling rates (audio files
-often only support integer sampling rates).
-
-**DarrSnd**: A continuous sound, like AudioSnd, but stored on disk in
-Darr format rather than audio format. Darr format can be faster than audio
-formats, and is generally more easily readable in scientific computing
-platforms, like Numpy, Matlab, R etc.
+**AudioFileSnd**: A continuous sound, with data stored on disk in a regular
+audio file and a separate text-based (json) metadata file. The metadata file
+allows for storing standard information about the sound (e.g. recording date
+and time, place) as well as any extra user information. This metadata has
+priority over metadata in the audiofile itself, which can be handy, for example
+when specifying non-integer sampling rates (audio files often only support
+integer sampling rates, which is not always precise enough for scientific
+purposes).
 
 **ChunkedSnd**: A continuous sound, stored as consecutive chunks in
-separate files (either audio or darr formats). This can be convenient when
-sounds are very long. For example, audio recorders will often save sounds
-chunked in a sequence of audio files when the file size would become larger
-than a file system allows for.
+separate audio files. This can be convenient when sound recordings are very
+long. For example, audio recorders will often save sounds in a sequence of
+separate audio files when the file size would become larger than a file system
+allows for. In sound, chunks in separate audio files are virtually merged and
+can be accessed as long sound object. This way, it becomes trivially easy and
+fast to select, e.g., a fragment from 5 to 7 AM on the fifth day of a week-long
+recording.
 
-**FragementedSnd**: A continuous sound, of which only fragments are
-available, with known timing. For example, a sound recorder only
-saves interesting events from continuous input. A FragmentedSnd provides a
-simple way of representing the complete sound and fills in the 'missing' frames
-with zeros when they are read. FragementedSnd objects can be based on either
-audio or darr format.
+**FragementedSnd**: A continuous sound, of which only fragments have been stored.
+For example, a sound recorder only saves interesting events from continuous input.
+A FragmentedSnd provides a simple way of representing the complete recording as one
+sound object, filling in the 'missing' frames with zeros when they are read.
 
 **Snd**: A continuous sound with metadata, stored on RAM memory.
 

@@ -1,43 +1,28 @@
 Sound
 =====
 
-*Sound* is a package for working with sound data in Python. It is designed
-for scientific use cases, but it may also be of interest to soundscape
-recordists, or anyone who wants to work efficiently with very long sounds,
-with very many sounds, or with metadata.
+*Sound* is a package for working with sound data in Python. It is developed
+particularly for scientific use cases and soundscape recordists/analysts.
 
 There are various excellent tools for working with audio files in Python.
-However, audio files can be cumbersome to work with in scientific
-applications because they were not designed for this type of work in mind.
+However, audio files were never designed for scientific work and can be
+cumbersome to work with. Some examples include working with very long
+recordings (think many hours, days, weeks) that do not fit into RAM or take
+ages to load, working with zillions of short sound events, with non-integer
+sampling rates (needed to precisely synchronize acoustic data with other
+data), with absolute sound levels or absolute time, or various types of
+metadata.
 
-Some examples include working efficiently with very long recordings
-(think many hours, days, weeks) that do not fit into RAM, with zillions of
-short sound events, with non-integer sampling rates (needed to precisely
-synchronize acoustic data with other data, or simply for accuracy), with
-absolute sound levels or absolute time, or various types of metadata. These
-things do not matter when playing music or speech on an audio device, but
-they can matter very much in scientific work and other applications.
-
-*Sound* helps to address such problems.
-
-In its simplest use case, *Sound* works with (collections of) normal audio
-files. This ensures hardware/software compatibility with the audio world.
-However it improves their usefulness by organizing metadata in separate
-text-based (JSON) files.
-
-For more heavy-duty work, *Sound* works with
-`Darr <https://darr.readthedocs.io/en/latest>`__-based data, which is a format
-designed for scientific use and supports very efficient random access
-reading/writing of disk-based numeric data. This allows for working
-very large recordings, or zillions of recorded sound episodes which would
-otherwise be inefficiently stored in separate files. It also
-ensures sound data can easily be read in scientific computing environments.
+*Sound* is based on (collections of) regular audio files, ensuring
+hardware/software compatibility with the audio world, but it improves
+their usefulness by storing important metadata in separate text-based (JSON)
+files, and, for very large collections of sound, additionally in widely
+readable and self-documented binary files.
 
 Status
 ------
 *Sound* is in its early stages of development (alpha) stage. It will be
 complemented by the *SoundLab* library for sound analysis and visualization.
-
 
 .. toctree::
    :maxdepth: 2
@@ -57,4 +42,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-Sound is BSD licensed (BSD 3-Clause License). (c) 2020-2022, Gabriël Beckers
+Sound is BSD licensed (BSD 3-Clause License). (c) 2020-2024, Gabriël Beckers

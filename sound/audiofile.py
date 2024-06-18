@@ -95,6 +95,204 @@ encodingtodtype = {'ALAC_16': 'int16',
                    'VORBIS': 'float32',
                    'VOX_ADPCM': 'int16'}
 
+
+class _SFReader:
+
+    def __init__(self, audiofilepath):
+        self._audiofilepath = audiofilepath
+        self._fileobj = None
+
+    @contextmanager
+    def _openfile(self):
+        if self._fileobj is not None:
+            yield self._fileobj
+        else:
+            try:
+                with sf.SoundFile(str(self._audiofilepath),
+                                  mode='r') as fileobj:
+                    self._fileobj = fileobj
+                    yield fileobj
+            except:
+                raise
+            finally:
+                self._fileobj = None
+
+    @contextmanager
+    def open(self):
+        with self._openfile():
+            yield None
+
+
+    def read_frames(self, startframe=None, endframe=None, channelindex=None,
+                    out=None, dtype='float64'):
+        """Read audio frames (timesamples, channels) from file.
+
+        A frames is a time sample that may be multichannel.
+
+        Parameters
+        ----------
+        startframe
+        endframe
+        channelindex
+        out
+
+        Returns
+        -------
+
+        """
+        # for normalization we read as float64 so that we do not need to
+        # convert later
+
+        with self._openfile() as af:
+            if startframe != af.tell():
+                try:
+                    af.seek(startframe)
+                except:
+                    # TODO make a proper error
+                    print(f'Unexpected error when seeking frame '
+                          f'{startframe} in {self._audiofilepath}')
+                    raise
+            try:
+                frames = af.read(endframe - startframe, dtype=dtype,
+                                 always_2d=True, out=out)
+            except:
+                # TODO create a proper error
+                print(f'Unexpected error when reading {endframe - startframe} '
+                      f'frames, starting from frame {startframe} in '
+                      f'{self._audiofilepath}')
+                raise
+        if channelindex is not None:
+            frames = frames[:, channelindex]
+        return frames
+
+
+class _MMReader:
+
+    # WAV header entries have max 4 bytes = 32 bits
+    _powers2 = np.power(2, np.arange(31, -1, -1, dtype='uint32'))
+
+    def __init__(self, audiofilepath):
+        self._audiofilepath = audiofilepath
+        fmt = self.readformat()
+        if fmt is None:
+            raise TypeError(
+                f"file {audiofilepath} does not seem to be an audio "
+                f"file that supports memory mapping")
+        self._memmap = None
+        self._audiofd = None
+        self._audioformat = fmt['audioformat']
+        self._nframes = nframes = fmt['nframes']
+        self._nchannels = nchannels= fmt['nchannels']
+        self._shape = (nframes, nchannels)
+        fs = fmt['fs']
+        self._bitspersample = fmt['bitspersample']
+        self._dataoffset = fmt['dataoffset']
+
+        if self._audioformat == 3:  # FLOAT OR DOUBLE
+            if self._bitspersample == 32:  # FLOAT
+                self._dtype = '<f4'
+            elif self._bitspersample == 64:  # DOUBLE
+                self._dtype = '<f8'
+            else:
+                raise ValueError(f"bitspersample cannot be " 
+                                 f"{self._bitspersample} for IEEE_FLOAT encoding" 
+                                 f", only 32 or 64")
+        elif self._audioformat == 1:
+            if self._bitspersample == 8:
+                self._dtype = f'<u1'
+            elif self._bitspersample in (16, 32):
+                self._dtype = f'<i{self._bitspersample // 8}'
+            else:
+                raise ValueError(f"bitspersample cannot be " 
+                                 f"{self._bitspersample} for PCM encoding" 
+                                 f", only 8, 16 or 32")
+        else:
+            raise ValueError(
+                f"audio format {audioformat} not supported, only IEEE_FLOAT or PCM")
+
+
+    @classmethod
+    def bytestonum(cls, bytear):
+        """Converts a little endian array of bytes as read by memmap from a wav
+        file to a number"""
+        bits = np.unpackbits(bytear[::-1])
+        return sum(cls._powers2[-len(bits):] * bits)
+
+    def readformat(self, verbose=False):
+        """https://wavefilegem.com/how_wave_files_work.html"""
+        bar = np.memmap(self._audiofilepath, dtype='B', offset=0)
+        riffchunk = bar[:12]
+        if not (riffchunk[:4].tobytes() == b'RIFF' \
+                and riffchunk[8:12].tobytes() == b'WAVE'):
+            if verbose:
+                print(f"{path} does not seem to be a RIFF based WAVE file")
+            return None
+        fmtchunk = bar[
+                   12:36]  # may be longer but 12:36 contains all the important parameters
+        if not fmtchunk[:4].tobytes() == b'fmt ':
+            raise ValueError(
+                f'Unexpected wave file header format: bytes 12:16 should read '
+                f'"fmt " but do in fact read "{fmtchunk[:4].tobytes()}"')
+        # fmtchunk[4:8] fmt Subchunk1Size
+        audioformat = self.bytestonum(fmtchunk[8:10])
+        nchannels = self.bytestonum(fmtchunk[10:12])
+        fs = self.bytestonum(fmtchunk[12:16])
+        bitspersample = self.bytestonum(fmtchunk[22:24])
+        start = 24
+        while bar[start:start + 4].tobytes() != b'data':
+            start += 4
+        datasize = self.bytestonum(bar[start + 4:start + 8])
+        dataoffset = start + 8
+        nframes = datasize // nchannels // (bitspersample // 8)
+        return {'audioformat': audioformat,
+                'nframes': nframes,
+                'nchannels': nchannels,
+                'fs': fs,
+                'bitspersample': bitspersample,
+                'dataoffset': dataoffset}
+
+    @contextmanager
+    def _open(self):
+        if self._memmap is not None:
+            yield self._memmap, self._audiofd
+        else:
+            try:
+                # we must do it like this instead of providing a filename
+                # to np.mmemap, otherwise accessing temporary dirs on
+                # windows will fail
+                with open(file=self._audiofilepath, mode='r') as fd:
+                    self._audiofd = fd
+                    self._memmap = np.memmap(filename=fd,
+                                             mode='r',
+                                             shape=self._shape,
+                                             dtype=self._dtype,
+                                             order='C',
+                                             offset=self._dataoffset)
+                    yield self._memmap, self._audiofd
+            except Exception:
+                raise
+            finally:
+                if hasattr(self._memmap, '_mmap'):
+                    self._memmap._mmap.close()  # *may need this for Windows*
+                self._audiofd.close()
+                self._memmap = None
+                self._audiofd = None
+
+    @contextmanager
+    def open(self):
+        with self._open() as (memmap, _):
+            yield None
+
+    # TODO out parameter
+    def read_frames(self, startframe=None, endframe=None,
+                    channelindex=None, out=None, dtype='float64'):
+
+        with self._open() as (ar, _):
+            frames = np.array(ar[slice(startframe,endframe, channelindex)],
+                              dtype=dtype, copy=True)
+        return frames
+
+
 class AudioFile(BaseSnd, SndInfo):
 
     """Sound data stored in an audio file.
@@ -121,7 +319,7 @@ class AudioFile(BaseSnd, SndInfo):
     _dtypes = ('float32', 'float64')
     _defaultdtype = 'float64'
 
-    def __init__(self, path, accessmode='r+'):
+    def __init__(self, path, accessmode='r+', mmap=True):
         audiofilepath, sndinfopath = self._check_path(path)
         self._audiofilepath = audiofilepath
         self._mode = accessmode
@@ -129,9 +327,13 @@ class AudioFile(BaseSnd, SndInfo):
             nframes = len(f)
             nchannels = f.channels
             fs = f.samplerate
-            self._audiofileformat = f.format
-            self._audioencoding = f.subtype
+            self._audiofileformat = af = f.format
+            self._audioencoding = aenc = f.subtype
             self._endianness = f.endian
+        if af == 'WAV' and aenc in ('FLOAT', 'DOUBLE') and mmap:
+            self._audioreader = _MMReader(audiofilepath)
+        else:
+            self._audioreader = _SFReader(audiofilepath)
         SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
                          settableparams=self._settableparams)
         si = self._sndinfo._read()
@@ -189,86 +391,29 @@ class AudioFile(BaseSnd, SndInfo):
             raise IOError(f"file {path} not recognized as an audio file")
         return audiopath, sndinfopath
 
-    @contextmanager
-    def _openfile(self, mode=None):
-        if mode is None:
-            mode = self._mode
-        if self._fileobj is not None:
-            yield self._fileobj
-        else:
-            try:
-                with sf.SoundFile(str(self.audiofilepath), mode=mode) as fileobj:
-                    self._fileobj = fileobj
-                    yield fileobj
-            except:
-                raise
-            finally:
-                self._fileobj = None
-
-    @contextmanager
-    def open(self):
-        with self._openfile():
-            yield None
 
     def set_mode(self, mode):
         if not mode in {'r', 'r+'}:
             raise ValueError(f"'mode' must be 'r' or 'r+', not '{mode}'")
         self._mode = mode
 
+    @contextmanager
+    def open(self):
+        with self._audioreader.open():
+            yield None
+
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
                     channelindex=None, out=None, dtype='float64'):
-        """Read audio frames (timesamples, channels) from file.
-
-        A frames is a time sample that may be multichannel.
-
-        Parameters
-        ----------
-        startframe
-        endframe
-        starttime
-        endtime
-        startdatetime
-        enddatetime
-        channelindex
-        out
-        inttofloat: bool, default: False
-            Determines if integer audio encodings such as PCM_16 should be normalized
-
-        Returns
-        -------
-
-        """
-        # for normalization we read as float64 so that we do not need to
-        # convert later
-
-
-        sampledtype = self._check_dtype(dtype)
-        with self._openfile() as af:
-            if startframe != af.tell():
-                try:
-                    af.seek(startframe)
-                except:
-                    #TODO make a proper error
-                    print(f'Unexpected error when seeking frame {startframe} in {self.audiofilepath} '
-                          f'which should have {self.nframes} frames.')
-                    raise
-            try:
-                frames = af.read(endframe - startframe, dtype=sampledtype,
-                                 always_2d=True, out=out)
-            except:
-                # TODO create a proper error
-                print(f'Unexpected error when reading {endframe-startframe} frames, '
-                      f'starting from frame {startframe} in {self.audiofilepath}, which should '
-                      f'have {self.nframes} frames.')
-                raise
-        if channelindex is not None:
-            frames = frames[:, channelindex]
+        dtype = self._check_dtype(dtype)
+        frames = self._audioreader.read_frames(startframe=startframe,
+                                               endframe=endframe,
+                                               channelindex=channelindex,
+                                               out=out, dtype=dtype)
         if self.scalingfactor is not None:
             frames *= self.scalingfactor
         return frames
-
 
     def info(self, verbose=False):
         d = super().info()
@@ -276,188 +421,6 @@ class AudioFile(BaseSnd, SndInfo):
         d['audiofilepath'] = str(self.audiofilepath)
         d['audiofileencoding'] = str(self._audioencoding)
         return {k: d[k] for k in sorted(d.keys())}
-
- # WAV header entries have max 4 bytes = 32 bits
-powers2 = np.power(2, np.arange(31, -1, -1, dtype='uint32'))
-
-def bytestonum(bytear):
-    """Converts a little endian array of bytes as read by memmap from a wav
-    file to a number"""
-    bits = np.unpackbits(bytear[::-1])
-    return sum(powers2[-len(bits):] * bits)
-
-def readformat(audiofilepath, verbose=False):
-    """https://wavefilegem.com/how_wave_files_work.html"""
-    bar = np.memmap(audiofilepath, dtype='B', offset=0)
-    riffchunk = bar[:12]
-    if not (riffchunk[:4].tobytes() == b'RIFF' \
-            and riffchunk[8:12].tobytes() == b'WAVE'):
-        if verbose:
-            print(f"{path} does not seem to be a RIFF based WAVE file")
-        return None
-    fmtchunk = bar[12:36]  # may be longer but 12:36 contains all the important parameters
-    if not fmtchunk[:4].tobytes() == b'fmt ':
-        raise ValueError(
-            f'Unexpected wave file header format: bytes 12:16 should read '
-            f'"fmt " but do in fact read "{fmtchunk[:4].tobytes()}"')
-    # fmtchunk[4:8] fmt Subchunk1Size
-    audioformat = bytestonum(fmtchunk[8:10])
-    nchannels = bytestonum(fmtchunk[10:12])
-    fs = bytestonum(fmtchunk[12:16])
-    bitspersample = bytestonum(fmtchunk[22:24])
-    start = 24
-    while bar[start:start + 4].tobytes() != b'data':
-        start += 4
-    datasize = bytestonum(bar[start + 4:start + 8])
-    dataoffset = start + 8
-    nframes = datasize // nchannels // (bitspersample // 8)
-    return {'audioformat': audioformat,
-            'nframes': nframes,
-            'nchannels': nchannels,
-            'fs': fs,
-            'bitspersample': bitspersample,
-            'dataoffset': dataoffset}
-class AudioFileMM(BaseSnd, SndInfo):
-    """An audiofile that is accessed as a memmap array.
-
-    This is likely much faster than just reading samples from file through
-    audio libraries such as libsndfile.
-
-    """
-    _classid = 'AudioFileMM'
-    _classdescr = ('Sound in memory-mapped audio file potentially with metadata '
-                   'in sidecar file')
-    _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
-                       'startdatetime', 'unit')
-    _dtypes = ('float32', 'float64')
-    _defaultdtype = 'float64'
-    def __init__(self, path, accessmode='r+'):
-        audiofilepath, sndinfopath = self._check_path(path)
-        self._audiofilepath = audiofilepath
-        self._mode = accessmode
-        fmt = readformat(self._audiofilepath)
-        if fmt is None:
-            raise TypeError(f"file {audiofilepath} does not seem to be an audio "
-                            f"file that supports memory mapping")
-        self._memmap = None
-        self._audiofd = None
-        self._audioformat = fmt['audioformat']
-        nframes = fmt['nframes']
-        nchannels = fmt['nchannels']
-        self._shape = (nframes, nchannels)
-        fs = fmt['fs']
-        self._bitspersample = fmt['bitspersample']
-        self._dataoffset = fmt['dataoffset']
-
-        if self._audioformat == 3: # FLOAT OR DOUBLE
-            if self._bitspersample == 32: # FLOAT
-                dtype = '<f4'
-            elif self._bitspersample == 64: # DOUBLE
-                dtype = '<f8'
-            else:
-                raise ValueError(f"bitspersample cannot be " \
-                                 f"{self._bitspersample} for IEEE_FLOAT encoding" \
-                                 f", only 32 or 64")
-        elif self._audioformat == 1:
-            if self._bitspersample == 8:
-                dtype = f'<u1'
-            elif self._bitspersample in (16, 32):
-                dtype = f'<i{self._bitspersample // 8}'
-            else:
-                raise ValueError(f"bitspersample cannot be " \
-                                 f"{self._bitspersample} for PCM encoding" \
-                                 f", only 8, 16 or 32")
-        else:
-            raise ValueError(
-                f"audio format {audioformat} not supported, only IEEE_FLOAT or PCM")
-
-        self._dtype = dtype
-
-        SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
-                         settableparams=self._settableparams)
-        si = self._sndinfo._read()
-        kwargs = {sp: si[sp] for sp in self._settableparams if sp in si}
-        if 'fs' in kwargs:
-            fs = kwargs.pop('fs')
-        BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
-                         sampledtype=self._defaultdtype,
-                         setparamcallback=self._set_parameter, **kwargs)
-
-    def _check_path(self, path):
-        path = Path(path)
-        if path.suffix.upper()[1:] in availableaudioformats:
-            sndinfopath = Path(f'{path}{SndInfo._suffix}')
-            audiopath = path
-        elif path.suffix in (SndInfo._suffix,
-                             SndInfo._suffix.upper()):  # we received info file, not audio file
-            sndinfopath = path
-            audiopath = path.parent / path.stem
-        elif not path.exists():
-            raise IOError(f"file {path} does not exist")
-        else:
-            raise IOError(f"file {path} not recognized as an audio file")
-        return audiopath, sndinfopath
-
-    @property
-    def audiofilepath(self):
-        """File system path to audio data"""
-        return self._audiofilepath
-
-    @property
-    def nframes(self):
-        """number of time frames (each potentially containing samples of multiple channels"""
-        return self._nframes
-
-    @property
-    def nchannels(self):
-        """number of channels"""
-        return self._nchannels
-
-    @contextmanager
-    def _open(self):
-        if self._memmap is not None:
-            yield self._memmap, self._audiofd
-        else:
-            try:
-                # we must do it like this instead of providing a filename
-                # to np.mmemap, otherwise accessing temporary dirs on
-                # windows will fail
-                with open(file=self._audiofilepath, mode='r') as fd:
-                    self._audiofd = fd
-                    self._memmap = np.memmap(filename=fd,
-                                             mode='r',
-                                             shape=self._shape,
-                                             dtype=self._dtype,
-                                             order='C',
-                                             offset=self._dataoffset)
-                    yield self._memmap, self._audiofd
-            except Exception:
-                raise
-            finally:
-                if hasattr(self._memmap, '_mmap'):
-                    self._memmap._mmap.close()  # *may need this for Windows*
-                self._audiofd.close()
-                self._memmap = None
-                self._audiofd = None
-
-    @contextmanager
-    def open(self):
-        with self._open() as (memmap, _):
-            yield None
-
-    @wraptimeparamsmethod
-    def read_frames(self, startframe=None, endframe=None, starttime=None,
-                    endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, out=None, dtype='float64'):
-
-        ## TODO normalize PCM data
-        with self._open() as (ar, _):
-            frames = np.array(ar[startframe:endframe, channelindex],
-                              dtype=dtype, copy=True)
-        if self.scalingfactor is not None:
-            frames *= self.scalingfactor
-        return frames
-
 
 
 

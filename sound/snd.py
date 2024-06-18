@@ -904,7 +904,7 @@ class Snd(BaseSnd):
 
     def _check_dtype(self, dtype):
         dtype = np.dtype(dtype).name
-        validdtypes = ('float32', 'float64', 'int16', 'int32')
+        validdtypes = ('float32', 'float64')
         if dtype in validdtypes:
             return dtype
         else:
