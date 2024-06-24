@@ -3,6 +3,7 @@ from .snd import Snd
 from .chunkedsnd import ChunkedSnd
 from .sndcollection import SndDict, as_snddict
 from .audiofile import AudioFile
+from .chunkedsnd import ChunkedSnd, audiodir_to_chunkedsnd
 from .stats import *
 
 

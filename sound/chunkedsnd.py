@@ -1,6 +1,7 @@
 import numpy as np
-from contextlib import contextmanager
-from darr.basedatadir import BaseDataDir
+from pathlib import Path
+from contextlib import contextmanager, ExitStack
+from darr.basedatadir import DataDir
 from darr.metadata import MetaData
 from .snd import BaseSnd
 from .audiofile import AudioFile, encodingtodtype
@@ -18,47 +19,74 @@ __all__ = ['ChunkedSnd', 'audiodir_to_chunkedsnd']
 
 class ChunkedSnd(BaseSnd, SndInfo):
     _classid = 'ChunkedSnd'
-    _classdescr = 'represents a continuous sound stored in separate files'
+    _classdescr = ('represents a continuous sound stored in separate, '
+                   'contiguous audio files')
     _suffix = '.chunkedsnd'
-    _fileformat = 'chunkedsnd'
+    _settableparams = ('fs', 'metadata', 'origintime', 'scalingfactor',
+                       'startdatetime', 'unit')
+    _dtypes = ('float32', 'float64')
+    _defaultdtype = 'float64'
+    _sndinfopath = 'sndinfo.json'
+    _metadatapath = 'metadata.json'
 
-    def __init__(self, path, dtype=None, accessmode='r'):
-        SndInfo.__init__(self, path=path, accessmode=accessmode)
+    def __init__(self, path, accessmode='r', mmap=True):
+        chunkedsnddirpath, sndinfopath = self._check_path(path)
+        self._chunkedsnddirpath = chunkedsnddirpath
+        SndInfo.__init__(self, path=sndinfopath, accessmode=accessmode,
+                         settableparams=self._settableparams)
         self._snds = []
-        chunknframes = [0]
-        ci = self._read_jsondict(self._sndinfopath)
+        ci = self._sndinfo._read()
         if ci['filetype'] == 'AudioFile':
             SndClass = AudioFile
-        elif ci['filetype'] == 'DarrSnd':
-            SndClass = DarrSnd
         else:
             raise TypeError(f"file type '{ci['filetype']}' not understood")
-        for pn in ci['chunkpaths']:
-            snd = SndClass(self.path / pn, dtype=dtype)
+        chunknframes = [0]
+        for pathname in ci['chunkpaths']:
+            snd = SndClass(chunkedsnddirpath / pathname, mmap=mmap)
             self._snds.append(snd)
             chunknframes.append(snd.nframes)
         self._chunknframes = np.array(chunknframes, dtype='int64')
         self._endindices = np.cumsum(self._chunknframes)
         nframes = self._chunknframes.sum()
         nchannels = ci['nchannels']
-        if dtype is None:
-            dtype = ci['dtype']
+        dtype = ci['dtype']
+        si = self._sndinfo._read()
+        kwargs = {sp: si[sp] for sp in self._settableparams if sp in si}
+        if 'fs' in kwargs:
+            fs = kwargs.pop('fs')
+        if 'dtype' in kwargs:
+            dtype = kwargs.pop('dtype')
+        else:
+            dtype = self._defaultdtype
         BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=ci['fs'],
-                         dtype=dtype,
-                         startdatetime=ci['startdatetime'],
-                         origintime=ci['origintime'], metadata=self.metadata,
-                         encoding=ci['fileformatsubtype'])
+                         sampledtype=dtype,
+                         setparamcallback=self._set_parameter, **kwargs)
+    @property
+    def chunkedsnddirpath(self):
+        return self._chunkedsnddirpath
+    def _check_path(self, path):
+        path = Path(path)
+        sndinfopath = path / self._sndinfopath
+        if not path.exists():
+            raise IOError(f"ChunkedSnd path {path} does not exist")
+        if not sndinfopath.exists():
+            raise IOError(f"Path {path} exist, but contains no file "
+                          f"{self._sndinfopath}. This is not a valid ChunkedSnd "
+                          f"folder.")
+
+        return path, sndinfopath
 
     @contextmanager
     def open(self):
-        yield None # still to be implemented
+        with ExitStack() as stack:
+            ahs = [stack.enter_context(s.open()) for s in self._snds]
+            yield None
 
     @wraptimeparamsmethod
     def read_frames(self, startframe=None, endframe=None, starttime=None,
                     endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, dtype=None, normalize=False):
-        if dtype is None:
-            dtype = self._dtype
+                    channelindex=None, out=None, dtype='float64'):
+        dtype = self._check_dtype(dtype)
         frames = np.empty((endframe - startframe, self._nchannels), dtype)
         startchunk, endchunk = np.searchsorted(self._endindices, (startframe, endframe), side="right") - (1, 1)
         startframe -= self._endindices[startchunk]
@@ -83,26 +111,29 @@ class ChunkedSnd(BaseSnd, SndInfo):
             frames = frames[:,channelindex]
         return frames
 
-def audiodir_to_chunkedsnd(path, extension='.wav', origintime=0.0, startdatetime='NaT', metadata=None,
-                           dtype=None, overwrite=False):
+def audiodir_to_chunkedsnd(path, extension='.wav', origintime=0.0,
+                           startdatetime='NaT', metadata=None, dtype=None,
+                           overwrite=False):
+    path = Path(path)
     sndinfo = list_audiofiles(path, extensions=(extension,), recursive=False)
     #FIXME assert same sound types
-    subtype = sndinfo['subtype'][0]
+    subtype = sndinfo['audioencoding'][0]
     if dtype is None:
-        dtype = encodingtodtype.get(subtype, 'float64')
+        dtype = ChunkedSnd._defaultdtype
+    dtype = BaseSnd._check_dtype(BaseSnd, dtype)
     startdatetime = np.datetime64(startdatetime)
     d = {'filetype': 'AudioFile',
-         'chunkpaths': sndinfo['paths'],
+         'chunkpaths': [p.name for p in sndinfo['paths']],
          'fs': sndinfo['fs'][0],
-         'fileformat': sndinfo['fileformat'][0],
-         'fileformatsubtype': sndinfo['subtype'][0],
+         'audiofileformat': sndinfo['audiofileformat'][0],
+         'audioencoding': sndinfo['audioencoding'][0],
          'endiannes': sndinfo['endianness'][0],
          'dtype': dtype,
          'nchannels': sndinfo['nchannels'][0],
          'origintime': origintime,
          'startdatetime': str(startdatetime)}
-    bd = BaseDataDir(path)
-    bd._write_jsondict(ChunkedSnd._sndinfopath, d=d,
+    bd = DataDir(path)
+    bd._write_jsondict(path / ChunkedSnd._sndinfopath, d=d,
                        overwrite=overwrite)
     if metadata is not None:
         bd._write_jsondict(ChunkedSnd._metadatapath, d=dict(metadata),

@@ -122,7 +122,6 @@ class _SFReader:
         with self._openfile():
             yield None
 
-
     def read_frames(self, startframe=None, endframe=None, channelindex=None,
                     out=None, dtype='float64'):
         """Read audio frames (timesamples, channels) from file.
@@ -319,7 +318,7 @@ class AudioFile(BaseSnd, SndInfo):
     _dtypes = ('float32', 'float64')
     _defaultdtype = 'float64'
 
-    def __init__(self, path, accessmode='r+', mmap=True):
+    def __init__(self, path, accessmode='r', mmap=True):
         audiofilepath, sndinfopath = self._check_path(path)
         self._audiofilepath = audiofilepath
         self._mode = accessmode
@@ -376,7 +375,6 @@ class AudioFile(BaseSnd, SndInfo):
     def endianness(self):
         return self._endianness
 
-    # TODO this is duplicated in AudioFileMM
     def _check_path(self, path):
         path = Path(path)
         if path.suffix.upper()[1:] in availableaudioformats:

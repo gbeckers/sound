@@ -236,10 +236,10 @@ class BaseSnd:
         want to change metadata."""
         return self._metadata.copy()
 
-    def _check_dtype(self, dtype):
+    def _check_dtype(cls, dtype):
         dtype = np.dtype(dtype).name
-        if not dtype in self._dtypes:
-            raise TypeError(f"`dtype` must be one of {self._dtypes}")
+        if not dtype in cls._dtypes:
+            raise TypeError(f"`dtype` must be one of {cls._dtypes}")
         return dtype
 
     def set_fs(self, fs):
@@ -725,47 +725,6 @@ class BaseSnd:
         _create_sndinfo(sndinfopath, d=info, overwrite=overwrite)
         return AudioFile(path, accessmode=accessmode)
 
-    #FIXME wrap
-    #@wraptimeparamsmethod
-    def to_darrsnd(self, path=None, dtype=None, metadata=None, mode='r',
-                   startframe=None, endframe=None, starttime=None, endtime=None,
-                   startdatetime=None, enddatetime=None, blocklen=44100,
-                   accessmode='r', overwrite=False, channelindex=None):
-
-        from .darrsnd import DarrSnd
-
-        snds = self.iterread(startframe=startframe, endframe=endframe,
-                               channelindex=channelindex,
-                               blocklen=blocklen)
-        snd1, snds = peek_iterable(snds)
-        sndpath = Path(path)
-        if sndpath.suffix not in (SndInfo._suffix, SndInfo._suffix.upper()):
-            sndpath = path.with_suffix(SndInfo._suffix)
-        darrpath = sndpath.with_suffix('.darr')
-        frames = (snd.read_frames() for snd in snds)
-        asarray(path=darrpath, array=frames, dtype=dtype,
-                accessmode=accessmode, overwrite=overwrite)
-        d = self._saveparams  # standard params that need saving
-        _create_sndinfo(sndpath, d=d, overwrite=overwrite)
-        return DarrSnd(sndpath, accessmode=accessmode)
-
-
-
-    def to_audiosnd(self, path, format=None, encoding=None, endian=None,
-                    startframe=None, endframe=None, starttime=None,
-                    endtime=None, startdatetime=None, enddatetime=None,
-                    channelindex=None, accessmode='r', overwrite=False):
-
-        from .audiofile import AudioSnd
-        af = self.to_audiofile(path, format=format, encoding=encoding,
-                               endian=endian, startframe=startframe,
-                               endframe=endframe, starttime=starttime,
-                               endtime=endtime, startdatetime=startdatetime,
-                               enddatetime=enddatetime, overwrite=overwrite,
-                               channelindex=channelindex)
-        path = af.audiofilepath.with_suffix(SndInfo._suffix)
-        return af.as_audiosnd(accessmode=accessmode, overwrite=overwrite)
-
     # also share code with darr case
     @wraptimeparamsmethod
     def to_chunkedaudiofile(self, path, chunklen=None, format=None, subtype=None, endian=None,
@@ -807,50 +766,6 @@ class BaseSnd:
                     'fileformat': af.fileformat,
                     'fileformatsubtype': af.fileformatsubtype,
                     'endianness': af.endianness,
-                    'nchannels': s0.nchannels,
-                    'origintime': s0.origintime,
-                    'startdatetime': str(s0.startdatetime)}
-        dd.write_sndinfo(d=d, overwrite=overwrite)
-        if (self.metadata is not None) and (not overwrite):
-            dd.metadata.update(self.metadata)
-        return ChunkedSnd(path)
-
-    @wraptimeparamsmethod
-    def to_chunkeddarrsnd(self, path, chunklen=None, startframe=None,
-                          endframe=None, starttime=None, endtime=None,
-                          startdatetime=None, enddatetime=None,
-                          channelindex=None, dtype=None, overwrite=False):
-
-        from .chunkedsnd import ChunkedSnd
-
-        if chunklen is None:
-            chunklen = int(round(self.fs * 60 * 60))
-        dd = create_datadir(path=path, overwrite=overwrite)
-        fnames = []
-        nframes = 0
-        for i, s in enumerate(
-                self.iterread(blocklen=chunklen, startframe=startframe,
-                              endframe=endframe, channelindex=channelindex)):
-            if s.startdatetime != 'NaT':
-                ts = str(s.startdatetime)
-                secs, ns = ts.rsplit('.')
-                if int(ns) == 0: # no part of second
-                    ts = secs
-                ts = ts.replace(':', '_').replace('.', '_')
-            else:
-                ts = duration_string(nframes / self.fs)
-            fname = f'chunk_{i:0>3}_{ts}'
-            af = s.to_darrsnd(dd.audiofilepath / fname, dtype=dtype,
-                              metadata=None,
-                              overwrite=overwrite)
-            fnames.append(af.audiofilepath.name)
-            if i == 0:
-                s0 = s
-            nframes += s.nframes
-        d = self._saveparams
-        d.update = {'chunktype': 'DarrSnd',
-                    'chunkpaths': fnames,
-                    'dtype': s0.dtype,
                     'nchannels': s0.nchannels,
                     'origintime': s0.origintime,
                     'startdatetime': str(s0.startdatetime)}

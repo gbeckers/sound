@@ -47,29 +47,24 @@ def list_audiofiles(audiodir, extensions=None,
         raise IOError(
             "there are no ({}) files in {}".format(extensions, audiodir))
     sndinfo = {
-        'path': [],
+        'paths': [],
         'nchannels': [],
         'fs': [],
         'nframes': [],
-        'fileformat': [],
-        'subtype': [],
+        'audiofileformat': [],
+        'audioencoding': [],
         'endianness': [],
     }
     for path in paths:
         (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(
             path)
-        if path.suffix in ('.darrsnd','.DARRSND'):
-            snd = DarrSnd(path)
-        elif path.suffix in ('.audiosnd','.AUDIOSND'):
-            snd = AudioSnd(path)
-        else:
-            snd = AudioFile(path)
-        sndinfo['path'].append(path)
+        snd = AudioFile(path)
+        sndinfo['paths'].append(path)
         sndinfo['nchannels'].append(snd.nchannels)
         sndinfo['fs'].append(snd.fs)
         sndinfo['nframes'].append(snd.nframes)
-        sndinfo['fileformat'].append(snd.fileformat)
-        sndinfo['subtype'].append(snd.fileformatsubtype)
+        sndinfo['audiofileformat'].append(snd.fileformat)
+        sndinfo['audioencoding'].append(snd.fileformatsubtype)
         sndinfo['endianness'].append(snd.endianness)
     return sndinfo
 
