@@ -144,34 +144,6 @@ def tempdir(dir='.', keep=False, report=False):
             if report:
                 print(f'removed cache file {tempdirname}')
 
-# def _check_dir(path):
-#     if os.path.isdir(path):
-#         return path
-#     else:
-#         raise ValueError('%s is not a directory' % path)
-#
-# def _check_fileexists(filename):
-#     if not os.path.exists(filename):
-#         raise IOError("file '%s' does not exist" % filename)
-#     return filename
-#
-# def _check_notfileexists(filename, overwrite=False):
-#     if os.path.exists(filename) and (not overwrite):
-#         raise IOError("file '%s' already exist" % filename)
-#     return filename
-#
-# def _check_h5file(path):
-#     if not (os.path.exists(path) and (os.path.splitext(path)[-1] == '.h5')):
-#         raise IOError("'%s' is not a path to a h5 file" % path)
-#     return path
-#
-# def _check_mode(mode):
-#     if mode == 'w':
-#         raise IOError("'w' mode is not allowed; delete SoundStore first")
-#     if mode not in ('r', 'a', 'r+'):
-#         raise IOError("mode can only be 'r', 'a', 'r+'")
-#     return mode
-
 def packing_code(samplewidth):
     if samplewidth == 1:            # 8 bits are unsigned, 16 & 32 signed
         return 'B', 128.0        # unsiged 8 bits
@@ -198,46 +170,19 @@ def duration_string(seconds):
             return f'{amount:.2f} {unit}'
     return f'{seconds/intervals[-1][0]:.3f} {intervals[-1][1][:-1]}'
 
-
-
-# def stringcode(number, labels="abcdefghijklmnopqrstuvwxyz", maxnumber=None):
-#     nlabels = len(labels)
-#     if maxnumber is None:
-#         maxnumber = number
-#     if maxnumber < number:
-#         raise ValueError(f"'maxnumber' should be at least {number}"
-#     codelen = int(math.ceil(math.log(maxnumber+1, nlabels)))
-#     a,b = divmod(number,nlabels)
-#     code = [labels[b]]
-#     for i in range(1, codelen):
-#         a,b = divmod(a, nlabels)
-#         code.insert(0, labels[b])
-#     return ''.join(code)
-
-
-# def getsize(obj):
-#     """Recursively iterate to sum size of object & members."""
-#     def inner(obj, _seen_ids = set()):
-#         obj_id = id(obj)
-#         if obj_id in _seen_ids:
-#             return 0
-#         _seen_ids.add(obj_id)
-#         size = sys.getsizeof(obj)
-#         if isinstance(obj, zero_depth_bases):
-#             pass # bypass remaining control flow and return
-#         elif isinstance(obj, (tuple, list, Set, deque)):
-#             size += sum(inner(i) for i in obj)
-#         elif isinstance(obj, Mapping) or hasattr(obj, iteritems):
-#             size += sum(inner(k) + inner(v) for k, v in getattr(obj, iteritems)())
-#         # Now assume custom object instances
-#         elif hasattr(obj, '__slots__'):
-#             size += sum(inner(getattr(obj, s)) for s in obj.__slots__ if hasattr(obj, s))
-#         else:
-#             attr = getattr(obj, '__dict__', None)
-#             if attr is not None:
-#                 size += inner(attr)
-#         return size
-#     return inner(obj)
+def commonstartsubstring(strings):
+    """ returns the longest common substring from the beginning of a collection
+    of strings """
+    def _iter(sa, sb):
+        for a, b in zip(sa, sb):
+            if a == b:
+                yield a
+            else:
+                return
+    ss = strings[0]
+    for s in strings[1:]:
+        ss = ''.join(_iter(ss,s))
+    return ss
 
 
 def fit_frames(totalsize, framesize, stepsize=None):
@@ -347,20 +292,9 @@ def iter_timewindowindices(ntimeframes, framesize, stepsize=None,
                 framestart < ntimeframes):
         yield framestart, framestart+remainder
 
-# fixme use from diskarray
-def write_json(datadict, path, sort_keys=True, indent=4, overwrite=False):
-    path = Path(path)
-    if (not path.exists()) or overwrite:
-        with open(path, 'w') as f:
-            f.write(json.dumps(datadict, sort_keys=sort_keys, indent=indent))
-    else:
-        raise IOError(f"'{path}' exists, use 'overwrite' parameter if "
-                      f"appropriate")
-# fixme use from diskarray
-def read_json(path):
-    with open(path, 'r+') as f:
-        return json.loads(f.read())
-
+def read_jsonfile(path):
+    with open(path, 'r') as fp:
+        return json.load(fp)
 
 def calcsecstonexthour(datetime):
     datetime = np.datetime64(datetime)
@@ -376,3 +310,51 @@ def peek_iterable(iterable):
     gen = (i for i in iterable)
     first = next(gen)
     return first, chain([first], gen)
+
+
+class DDJSONEncoder(json.JSONEncoder):
+    """This JSON encoder fixes the problem that numpy objects aren't
+    serialized to JSON with the json library default JSONEncode. Since data
+    often involves numpy, and many scientific libraries produce numpy objects,
+    we convert these silently to something that is a Python primitive type
+
+    """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.datetime64):
+            return str(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, Path):
+            return str(obj)
+        elif hasattr(obj, 'decode'):
+            return obj.decode("utf-8")
+        else:
+            return super(DDJSONEncoder, self).default(obj)
+
+
+def write_jsonfile(path, data, sort_keys=False, indent=4, ensure_ascii=True,
+                   skipkeys=False, cls=None, overwrite=False):
+    path = Path(path)
+    if cls is None:
+        cls = DDJSONEncoder
+    if path.exists() and not overwrite:
+        raise OSError(f"'{path}' exists, use 'overwrite' argument")
+    try:
+        json_string = json.dumps(data, sort_keys=sort_keys, skipkeys=skipkeys,
+                                 ensure_ascii=ensure_ascii, indent=indent,
+                                 cls=cls)
+    except TypeError:
+        s = f"Unable to serialize the metadata to JSON: {data}.\n" \
+            f"Use character strings as dictionary keys, and only " \
+            f"character strings, numbers, booleans, None, lists, " \
+            f"and dictionaries as objects."
+        raise TypeError(s)
+    else:
+        # utf-8 is ascii compatible
+        with open(path, 'w', encoding='utf-8') as fp:
+            fp.write(json_string)
+

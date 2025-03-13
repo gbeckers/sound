@@ -24,17 +24,15 @@ setuptools.setup(
     license='BSD-3',
     author='Gabriel J.L. Beckers',
     author_email='gabriel@gbeckers.nl',
-    description='Fast, out-of-core access to disk-based sound data and '
-                'read/write audio files.',
+    description='sound data interface for scientists and recordists',
     long_description=long_description,
     long_description_content_type="text/x-rst",
-    python_requires='>=3.6',
-    install_requires=['soundfile>=0.12', 'darr>=0.5'],  # numpy is a dependency of darr already
+    python_requires='>=3.12',
+    install_requires=['darr>=0.5','soundfile>=0.12'],  # numpy is a dependency of darr already
     data_files = [("", ["LICENSE"])],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         'Development Status :: 3 - Alpha',

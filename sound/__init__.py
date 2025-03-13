@@ -1,10 +1,12 @@
-from .darrsnd import *
 from .snd import Snd
-from .chunkedsnd import ChunkedSnd
+from .segmented import SegmentedSndFiles
 from .sndcollection import SndDict, as_snddict
-from .audiofile import AudioFile
-from .chunkedsnd import ChunkedSnd, audiodir_to_chunkedsnd
+from .sndfile import *
+from .audioimport import *
+
 from .stats import *
 
 
 from .tests import test
+from . import _version
+__version__ = _version.get_versions()['version']

@@ -1,7 +1,7 @@
 import numpy as np
 from contextlib import contextmanager
 from pathlib import Path
-from darr import asarray
+from darr import asarray, create_datadir
 
 from .sndinfo import SndInfo, _create_sndinfo
 
@@ -107,7 +107,7 @@ class BaseSnd:
     frames: array-like
       Time on first axis, channel on second axis. Needs to support indexing, to 
       have `dtype`and `shape` attributes, and to implement an `open` method.
-    fs: {int, float}
+    samplingrate: {int, float}
       Sampling rate in Hz.
     dtype: numpy dtype
         This is the dtype of the sound pressure values as return when read 
@@ -134,27 +134,26 @@ class BaseSnd:
     _classid = 'BaseSnd'
     _classdescr = 'represents a continuous sound'
     _version = get_versions()['version']
-    _dtypes = ('float32', 'float64')
-    _defaultdtype = 'float64'
+    _sampledtypes = ('float32', 'float64')
+    _defaultsampledtype = 'float32'
 
-    def __init__(self, nframes, nchannels, fs, dtype='float64',
-                 sampledtype=None, scalingfactor=None, startdatetime='NaT',
-                 origintime=0.0, unit=None, metadata=None,
-                 setparamcallback=None):
+    def __init__(self, nframes, nchannels, samplingrate, dtype='float64',
+                 scalingfactor=None, startdatetime='NaT',
+                 origintime=0.0, unit=None, usermetadata=None,
+                 setparamcallback=None, **extrakwargs):
 
         self._nframes = nframes
         self._nchannels = nchannels
-        self._sampledtype = sampledtype
-        if not isinstance(fs, (int, float)):
-            raise TypeError(f"`fs` can only be an int or float, not; {type(fs)}")
-        self._fs = _check_fs(fs)
+        if not isinstance(samplingrate, (int, float)):
+            raise TypeError(f"`fs` can only be an int or float, not; {type(samplingrate)}")
+        self._samplingrate = _check_fs(samplingrate)
         self._scalingfactor = _check_scalingfactor (scalingfactor)
         self._startdatetime = _check_startdatetime(startdatetime)
         self._origintime = _check_origintime(origintime)
         self._unit = _check_unit(unit)
-        if metadata is None:
-            metadata = {}
-        self._metadata = _check_metadata(metadata)
+        if usermetadata is None:
+            usermetadata = {}
+        self._usermetadata = _check_metadata(usermetadata)
         self._setparamcallback = setparamcallback  # for subclasses
 
     @property
@@ -168,24 +167,14 @@ class BaseSnd:
         return self._nchannels
 
     @property
-    def sampledtype(self):
-        """NumPy dtype of the samples as they are stored in memory"""
-        return self._sampledtype
-
-    @property
-    def fs(self):
+    def samplingrate(self):
         """Sampling rate in Hz."""
-        return self._fs
+        return self._samplingrate
 
     @property
     def dt(self):
         """Sampling period in seconds."""
-        return 1 / self._fs
-
-    # @property
-    # def dtype(self):
-    #     """Numeric data type of frames (numpy dtype)."""
-    #     return self._dtype
+        return 1 / self._samplingrate
 
     @property
     def scalingfactor(self):
@@ -195,7 +184,7 @@ class BaseSnd:
 
     @property
     def duration(self):
-        return self._nframes / self._fs
+        return self._nframes / self._samplingrate
 
     @property
     def startdatetime(self):
@@ -231,27 +220,27 @@ class BaseSnd:
         return self._unit
 
     @property
-    def metadata(self):
+    def usermetadata(self):
         """Returns *copy* of metadata dict. Use `set_metadata` method if you
         want to change metadata."""
-        return self._metadata.copy()
+        return self._usermetadata.copy()
 
     def _check_dtype(cls, dtype):
         dtype = np.dtype(dtype).name
-        if not dtype in cls._dtypes:
-            raise TypeError(f"`dtype` must be one of {cls._dtypes}")
+        if not dtype in cls._sampledtypes:
+            raise TypeError(f"`dtype` must be one of {cls._sampledtypes}")
         return dtype
 
-    def set_fs(self, fs):
-        self._fs = _check_fs(fs)
+    def set_samplingrate(self, fs):
+        self._samplingrate = _check_fs(fs)
         if self._setparamcallback is not None:
             self._setparamcallback('fs', fs, self._saveparams)
 
-    def set_metadata(self, metadata):
+    def set_usermetadata(self, metadata):
         metadata = _check_metadata(metadata)
         if self._setparamcallback is not None:
-            self._setparamcallback('metadata', metadata, self._saveparams)
-        self._metadata = metadata
+            self._setparamcallback('usermetadata', metadata, self._saveparams)
+        self._usermetadata = metadata
 
     def set_origintime(self, origintime):
         origintime = _check_origintime(origintime)
@@ -283,12 +272,13 @@ class BaseSnd:
             chstr = "channel"
         else:
             chstr = "channels"
-        return f'{self._classid} <{totdur}, {self._fs} Hz, {self._nchannels} {chstr}>'
+        return (f'{self._classid} <{totdur}, {self._samplingrate} Hz, '
+                f'{self._nchannels} {chstr}, {self._sampledtype}>')
 
     __repr__ = __str__
 
     def __eq__(self, other):
-        if not self.fs == other.fs:
+        if not self.samplingrate == other.samplingrate:
             return False
         if not self.origintime == other.origintime:
             return False
@@ -302,7 +292,7 @@ class BaseSnd:
             return False
         if not self.unit == other.unit:
             return False
-        blocklen = int(self.fs)
+        blocklen = int(self.samplingrate)
         for i,j in zip(self.iterread_frames(blocklen=blocklen),
                        other.iterread_frames(blocklen=blocklen)):
             if not (i==j).all():
@@ -311,8 +301,8 @@ class BaseSnd:
 
     def seek_differences(self, other):
         d = {}
-        if not self.fs == other.fs:
-            d['fs'] = (self.fs, other.fs)
+        if not self.samplingrate == other.samplingrate:
+            d['fs'] = (self.samplingrate, other.samplingrate)
         if not self.origintime == other.origintime:
             d['origintime'] = (self.origintime, other.origintime)
         if not str(self.startdatetime) == str(other.startdatetime):
@@ -327,7 +317,7 @@ class BaseSnd:
         if not self.unit == other.unit:
             d['unit'] = (self.unit, other.unit)
         if ('nchannels' not in d) and ('nframes' not in d):
-            blocklen = int(self.fs)
+            blocklen = int(self.samplingrate)
             nframesdifferent = 0
             for i,j in zip(self.iterread_frames(blocklen=blocklen),
                            other.iterread_frames(blocklen=blocklen)):
@@ -343,20 +333,26 @@ class BaseSnd:
     def _saveparams(self):
         """the parameters that need to be saved when a child class is
         disk-persistent"""
-
-        return {'duration': duration_string(self.duration),
-                'framedtype': self.sampledtype,
-                'fs': self.fs,
-                'metadata': dict(self.metadata),
-                'nchannels': self.nchannels,
-                'nframes': self.nframes,
-                'origintime': self.origintime,
-                'scalingfactor': self.scalingfactor,
-                'sndtype': self._classid,
-                'sndversion': self._version,
-                'startdatetime': str(self.startdatetime),
-                'unit': self._unit
-                }
+        sndmetadata = \
+            {'scalingfactor': self.scalingfactor,
+             'samplingrate': self.samplingrate,
+             'unit': self._unit,
+             }
+        recordingdata = \
+            {'startdatetime': str(self.startdatetime),
+             'origintime': self.origintime}
+        soundinfo = \
+            {'sndtype': self._classid,
+             'sndversion': self._version,
+             'duration': duration_string(self.duration),
+             'nchannels': self.nchannels,
+             'nframes': self.nframes
+            }
+        usermetadata = self._usermetadata
+        return {'sndinfo': soundinfo,
+                'sndmetadata': sndmetadata,
+                'recordingdata': recordingdata,
+                'usermetadata': usermetadata}
 
     def info(self):
         return self._saveparams
@@ -375,7 +371,7 @@ class BaseSnd:
 
         """
         return ((np.arange(self._nframes, dtype=np.float64) + 0.5)
-                / self._fs) - self.origintime
+                / self._samplingrate) - self.origintime
 
     def samplingboundarytimes(self):
         """
@@ -384,7 +380,7 @@ class BaseSnd:
         Note that the size of the return array is ntimesamples + 1
 
         """
-        return (np.arange(self._nframes + 1, dtype=np.float64) / self._fs) \
+        return (np.arange(self._nframes + 1, dtype=np.float64) / self._samplingrate) \
                - self.origintime
 
     def time_to_index(self, time, nearest_boundary=False):
@@ -430,10 +426,10 @@ class BaseSnd:
         # calculate
         if nearest_boundary:
             index = (np.floor((time + self.origintime + self.dt / 2.0)
-                              * self._fs)).astype(np.int64)
+                              * self._samplingrate)).astype(np.int64)
         else:
             index = (np.floor((time + self.origintime)
-                              * self._fs)).astype(np.int64)
+                              * self._samplingrate)).astype(np.int64)
         if index.size == 1:
             return index.item()
         else:
@@ -463,7 +459,7 @@ class BaseSnd:
             raise ValueError("index (%s) cannot be smaller than zero or higher"
                              " than nframes - 1 (%d)" \
                              % (index, self._nframes - 1))
-        result = ((index + 0.5) / self._fs) - self.origintime
+        result = ((index + 0.5) / self._samplingrate) - self.origintime
         if result.size == 1:
             return result.item()
         else:
@@ -478,7 +474,7 @@ class BaseSnd:
                              starttime=starttime, endtime=endtime,
                              startdatetime=startdatetime,
                              enddatetime=enddatetime,
-                             fs=self._fs, nframes=self._nframes,
+                             fs=self._samplingrate, nframes=self._nframes,
                              originstartdatetime=self.startdatetime)
 
     def frameindex_to_sndtime(self, frameindex, where='start'):
@@ -570,16 +566,16 @@ class BaseSnd:
                                   dtype=dtype)
         startdatetime = self.frameindex_to_datetime(startframe,
                                                     where='start')
-        origintime = self.origintime - startframe / float(self.fs)
-        if self.metadata is not None:
-            metadata = dict(self.metadata)
+        origintime = self.origintime - startframe / float(self.samplingrate)
+        if self.usermetadata is not None:
+            metadata = dict(self.usermetadata)
         else:
             metadata = None
-        s = Snd(frames=frames, fs=self._fs,
+        s = Snd(frames=frames, samplingrate=self._samplingrate,
                 startdatetime=startdatetime,
                 origintime=origintime,
-                metadata=metadata)
-        s.starttime = startframe / float(self._fs)
+                usermetadata=metadata)
+        s.starttime = startframe / float(self._samplingrate)
         return s
 
     @wraptimeparamsmethod
@@ -590,7 +586,7 @@ class BaseSnd:
                  dtype=None,
                  normalize=False):
         if splitonclockhour:
-            hour = int(round(self.fs * 60 * 60))
+            hour = int(round(self.samplingrate * 60 * 60))
             if blocklen is None:
                 blocklen = hour
             if not blocklen == hour:
@@ -600,12 +596,12 @@ class BaseSnd:
             if self.startdatetime == np.datetime64('NaT'):
                 raise ValueError(f'`splitonclockhour` parameter not possible '
                                  f'when there is no known sound startdatetime')
-            firstblocklen = int(round(calcsecstonexthour(self.startdatetime) * self.fs))
+            firstblocklen = int(round(calcsecstonexthour(self.startdatetime) * self.samplingrate))
         else:
             firstblocklen = None
         nread = 0
         if blocklen is None:
-            blocklen = int(round(self.fs))
+            blocklen = int(round(self.samplingrate))
         for window in self.iterread_frames(blocklen=blocklen,
                                            stepsize=stepsize,
                                            include_remainder=include_remainder,
@@ -624,8 +620,8 @@ class BaseSnd:
                 startdatetime = self.startdatetime + \
                                 np.timedelta64(int(elapsedsec * 1e9), 'ns')
             origintime = self.origintime - elapsedsec
-            yield Snd(frames=window, fs=self._fs, startdatetime=startdatetime,
-                      origintime=origintime, metadata=None, unit=self.unit)
+            yield Snd(frames=window, samplingrate=self._samplingrate, startdatetime=startdatetime,
+                      origintime=origintime, usermetadata=None, unit=self.unit)
             nread += window.shape[0]
 
     # FIXME normalization etc
@@ -661,7 +657,7 @@ class BaseSnd:
 
         """
         import soundfile as sf
-        from .audiofile import AudioFile, defaultaudioformat, \
+        from .sndfile import SndFile, defaultaudioformat, \
             defaultaudioencoding, availableaudioencodings, availableaudioformats
         startframe, endframe = self._check_episode(startframe=startframe,
                                                    endframe=endframe,
@@ -685,7 +681,7 @@ class BaseSnd:
             raise ValueError(f"'{format}' format not availabe (choose from: "
                              f"{availableaudioformats.keys()})")
         if encoding is None:
-            if isinstance(self, AudioFile):
+            if isinstance(self, SndFile):
                 if self._audioencoding in availableaudioencodings(format):
                     encoding = self._audioencoding
             else:
@@ -693,7 +689,7 @@ class BaseSnd:
         path = Path(path)
         if path.suffix != f'.{format.lower()}':
             path = path.with_suffix(f'.{format.lower()}')
-        samplerate = int(round(self.fs))
+        samplerate = int(round(self.samplingrate))
         if path.exists() and not overwrite:
             raise IOError(
                 "File '{}' already exists; use 'overwrite'".format(path))
@@ -703,7 +699,7 @@ class BaseSnd:
             nchannels = self.nchannels
         startdatetime = self.frameindex_to_datetime(startframe,
                                                     where='start')
-        origintime = self.origintime - startframe / float(self.fs)
+        origintime = self.origintime - startframe / float(self.samplingrate)
         with sf.SoundFile(file=str(path), mode='w', samplerate=samplerate,
                           channels=nchannels, subtype=encoding, endian=endian,
                           format=format) as f:
@@ -714,28 +710,30 @@ class BaseSnd:
                 f.write(window)
             endian = f.endian
         info = self._saveparams
-        info.update({'endiannes': endian,
+        info.update({'filepath': path.name,
+                     'endiannes': endian,
                      'fileformat': format,
                      'encoding': encoding,
-                     'metadata': self.metadata,
-                     'sndtype': AudioFile._classid,
+                     'metadata': self.usermetadata,
+                     'sndtype': SndFile._classid,
                      'startdatetime': startdatetime,
                      'origintime': origintime})
-        sndinfopath = Path(f'{path}{SndInfo._suffix}')
+        sndinfopath = path.with_suffix(SndInfo._suffix)
         _create_sndinfo(sndinfopath, d=info, overwrite=overwrite)
-        return AudioFile(path, accessmode=accessmode)
+        return SndFile(path, accessmode=accessmode)
 
     # also share code with darr case
+    # TODO can't we use audiodir_to_segmentedaudiofile to avoid duplication
     @wraptimeparamsmethod
-    def to_chunkedaudiofile(self, path, chunklen=None, format=None, subtype=None, endian=None,
+    def to_chunkedaudiofile(self, path, chunklen=None, format=None, encoding=None, endian=None,
                             startframe=None, endframe=None, starttime=None, endtime=None,
                             startdatetime=None, enddatetime=None, channelindex=None,
-                            splitonclockhour=False, overwrite=False):
-
-        from .chunkedsnd import ChunkedSnd
+                            splitonclockhour=False, sampledtype=None, overwrite=False):
+        # TODO use audiodir_to_chunkedsnd in chunkedsnd
+        from .segmented import ChunkedSnd
 
         if chunklen is None:
-            chunklen = int(round(self.fs * 60 * 60))
+            chunklen = int(round(self.samplingrate * 60 * 60))
         dd = create_datadir(path=path, overwrite=overwrite)
         fnames = []
         nframes = 0
@@ -744,34 +742,37 @@ class BaseSnd:
                                             endframe=endframe,
                                             splitonclockhour=splitonclockhour,
                                             channelindex=channelindex)):
-            if s.startdatetime != 'NaT':
+            # TODO make general
+            if not np.isnat(s.startdatetime):
                 ts = str(s.startdatetime)
                 secs, ns = ts.rsplit('.')
                 if int(ns) == 0: # no part of second
                     ts = secs
                 ts = ts.replace(':', '_').replace('.', '_')
             else:
-                ts = duration_string(nframes / self.fs)
-            fname = f'chunk_{i:0>3}_{ts}'
-            af = s.to_audiofile(dd.audiofilepath / fname, format=format,
-                                encoding=subtype, endian=endian,
+                ts = duration_string(nframes / self.samplingrate)
+            fname = f'chunk_{i:0>3}' # TODO leading zeros flexible
+            af = s.to_audiofile(dd.path / fname, format=format,
+                                encoding=encoding, endian=endian,
                                 overwrite=overwrite)
             fnames.append(af.audiofilepath.name)
             if i == 0:
                 s0 = s
             nframes += s.nframes
         d = self._saveparams
-        d.update = {'chunktype': 'AudioFile',
-                    'chunkpaths': fnames,
-                    'fileformat': af.fileformat,
-                    'fileformatsubtype': af.fileformatsubtype,
-                    'endianness': af.endianness,
-                    'nchannels': s0.nchannels,
-                    'origintime': s0.origintime,
-                    'startdatetime': str(s0.startdatetime)}
-        dd.write_sndinfo(d=d, overwrite=overwrite)
-        if (self.metadata is not None) and (not overwrite):
-            dd.metadata.update(self.metadata)
+        d.update({'sndtype': SegmentedSndFiles._classid,
+                  'segmenttype': 'SndFile',
+                  'segmentfilepaths': fnames,
+                  'fileformat': af.fileformat,
+                  'encoding': af.audioencoding,
+                  'endianness': af.endianness,
+                  'nchannels': s0.nchannels,
+                  'origintime': s0.origintime,
+                  'sampledtype': sampledtype,
+                  'startdatetime': str(s0.startdatetime)})
+        dd.write_jsonfile(filename=ChunkedSnd._sndinfopath, data=d, overwrite=overwrite)
+        if (self.usermetadata is not None) and (not overwrite):
+            dd.usermetadata.update(self.usermetadata)
         return ChunkedSnd(path)
 
 
@@ -786,7 +787,7 @@ class Snd(BaseSnd):
         always two-dimensional. If the input is one-dimensional it is assumed to have 
         one channel only and will be converted to a two-dimensional array with length 1 
         on the second axis.
-    fs: int or float
+    samplingrate: int or float
         Sampling rate in Hz (frames per second).
     dtype: numpy dtype {None | unint8 | int8 | int16 | int32 | int64 | float32 | float64 }
         Frames will be converted to this dtype if not None. Default: None, inferred from 
@@ -798,11 +799,11 @@ class Snd(BaseSnd):
 
     _classid = 'Snd'
     _classdescr = 'a sound in RAM memory'
-    _dtypes = ('float32', 'float64')
-    _defaultdtype = 'float64'
+    _sampledtypes = ('float32', 'float64')
+    _defaultsampledtype = 'float32'
 
-    def __init__(self, frames, fs, startdatetime='NaT', origintime=0.0,
-                 metadata=None, scalingfactor=None, unit=None):
+    def __init__(self, frames, samplingrate, startdatetime='NaT', origintime=0.0,
+                 usermetadata=None, scalingfactor=None, unit=None):
         if frames.ndim == 1:
             frames = frames.reshape(-1, 1)
         elif frames.ndim > 2:
@@ -811,11 +812,11 @@ class Snd(BaseSnd):
         self._frames = frames
         dtype = frames.dtype.name
 
-        BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, fs=fs,
+        BaseSnd.__init__(self, nframes=nframes, nchannels=nchannels, samplingrate=samplingrate,
                          sampledtype=dtype,
                          scalingfactor=scalingfactor,
                          startdatetime=startdatetime, origintime=origintime,
-                         metadata=metadata, unit=unit)
+                         usermetadata=usermetadata, unit=unit)
 
     def _check_dtype(self, dtype):
         dtype = np.dtype(dtype).name

@@ -1,10 +1,9 @@
 import sys
-from .darrsnd import DarrSnd, SndInfo
 from .audioimport import list_audiofiles
 from ._version import get_versions
-from .audiofile import AudioFile
-from .darrsnd import DarrSnd
-from .chunkedsnd import ChunkedSnd
+from .sndfile import SndFile
+from .segmented import SegmentedSndFiles
+from .sndinfo import SndInfo
 
 from pathlib import Path
 

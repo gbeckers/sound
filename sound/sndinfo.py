@@ -7,13 +7,13 @@ class SndInfo:
     _classid = 'SndInfo'
     _classdescr = 'JSON file with information on sound object'
     _version = get_versions()['version']
-    _suffix = '.json'
+    _suffix = '.sound'
 
-    def __init__(self, path, settableparams=None, accessmode='r'):
+    def __init__(self, path, setableparams=None, accessmode='r'):
         self._sndinfo = MetaData(path, accessmode=accessmode)
-        if settableparams is None:
-            settableparams = ()
-        self._settableparams = settableparams
+        if setableparams is None:
+            setableparams = ()
+        self._settableparams = setableparams
 
     # @property
     # def sndinfo(self):
